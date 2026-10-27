@@ -431,6 +431,12 @@ class WatchPage {
         const isRawTs = url.includes('.ts') && !url.includes('.m3u8');
         const isDirectVideo = url.includes('.mp4') || url.includes('.mkv') || url.includes('.avi');
 
+        // Canvas playback (WebCodecs, no <video> element) for the Tesla browser
+        if (typeof CanvasPlayback !== 'undefined' && CanvasPlayback.isEnabled()) {
+            await this.playCanvas(url, program, playbackGeneration, settings);
+            return;
+        }
+
         // Priority 0: Auto Transcode (Smart) - probe first, then decide
         if (settings.autoTranscode) {
             console.log('[WatchPage] Auto Transcode enabled. Probing stream...');
@@ -574,6 +580,48 @@ class WatchPage {
         this.setVolumeFromStorage();
     }
 
+    /** Play through the canvas pipeline; seeking restarts the server stream at the new offset. */
+    async playCanvas(url, program, generation, settings) {
+        if (CanvasPlayback.isTeslaBrowser() && !CanvasPlayback.confirmPassengerUse()) {
+            this.hideLoading();
+            return;
+        }
+        let info = null;
+        try {
+            const ua = settings.userAgentPreset === 'custom' ? settings.userAgentCustom : settings.userAgentPreset;
+            info = await (this.playbackProbe ||= new PlaybackProbe(fetch)).read(url, { program, userAgent: ua || '' });
+        } catch (err) {
+            if (err.name === 'AbortError') return;
+            console.warn('[WatchPage] Canvas probe failed, re-encoding:', err.message);
+        }
+        if (this.playbackGeneration !== generation) return;
+        if (info) {
+            this.setSourceDuration(info.duration);
+            this.currentStreamInfo = info;
+            this.updateQualityBadge();
+        }
+
+        const plan = CanvasPlayback.planFor(info);
+        const showMode = ({ engine, videoMode }) => {
+            if (this.playbackGeneration === generation) this.updateTranscodeStatus('transcoding', CanvasPlayback.describe(engine, videoMode));
+        };
+        console.log('[WatchPage] Canvas playback', plan);
+        showMode(plan);
+        const seek = this.resumeTime > 0 && !(this.sourceDuration && this.resumeTime >= this.sourceDuration * 0.95) ? this.resumeTime : 0;
+        this.resumeTime = 0; // consumed here, so metadata loading does not seek again
+        (this.canvasVideo ||= new CanvasVideo(this.video)).start({
+            url,
+            live: false,
+            seek,
+            duration: this.sourceDuration,
+            program,
+            ...plan,
+            height: CanvasPlayback.getMaxHeight(),
+            onModeChange: showMode
+        });
+        this.setVolumeFromStorage();
+    }
+
     /** Start a seekable VOD session without re-encoding compatible video. */
     async playRemuxSession(url, info, program, generation) {
         this.getCaptionTracks().setProbe(info, url);
@@ -661,6 +709,12 @@ class WatchPage {
     stop() {
         this.playbackProbe?.cancel();
         this.playbackGeneration = (this.playbackGeneration || 0) + 1;
+        // Save progress while the canvas player still answers currentTime, then release the element.
+        if (this.canvasVideo?.active) {
+            this.stopHistoryTracking();
+            this.saveProgress();
+            this.canvasVideo.stop();
+        }
         this.audioRecovery?.dispose();
         this.audioRecovery = null;
         // Stop history tracking and save final progress

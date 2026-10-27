@@ -198,13 +198,14 @@ app.use('/api', (req, res, next) => {
     next();
 });
 const mediaLimit = requestLimit(60);
-app.use(['/api/remux', '/api/probe', '/api/subtitle'], mediaLimit);
+app.use(['/api/remux', '/api/probe', '/api/subtitle', '/api/canvas'], mediaLimit);
 app.use('/api/sources', require('./routes/sources'));
 app.use('/api/proxy', require('./routes/proxy'));
 app.use('/api/channels', require('./routes/channels'));
 app.use('/api/favorites', require('./routes/favorites'));
 app.use('/api/transcode', require('./routes/transcode'));
 app.use('/api/remux', require('./routes/remux'));
+app.use('/api/canvas', require('./routes/canvas'));
 app.use('/api/probe', require('./routes/probe'));
 app.use('/api/subtitle', require('./routes/subtitle'));
 app.use('/api/settings', require('./routes/settings'));

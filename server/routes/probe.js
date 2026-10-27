@@ -139,6 +139,8 @@ function analyzeProbeResult(probeResult, url, program = null) {
         width: videoStream?.width || 0,
         height: videoStream?.height || 0,
         audioChannels: audioStream?.channels || 0, // For Smart Audio Copy
+        // progressive, tt, bb, tb, bt or unknown (HLS playlists usually report unknown)
+        fieldOrder: videoStream?.field_order || 'unknown',
         container: container,
         compatible: compatible,
         needsRemux: needsRemux,

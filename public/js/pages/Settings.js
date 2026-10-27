@@ -131,6 +131,17 @@ class SettingsPage {
         if (forceVideoTranscodeToggle) forceVideoTranscodeToggle.checked = s.forceVideoTranscode === true;
         if (forceRemuxToggle) forceRemuxToggle.checked = s.forceRemux || false;
         if (streamFormatSelect) streamFormatSelect.value = s.streamFormat || 'm3u8';
+
+        // Canvas playback is per device (Tesla vs. desktop), so it lives in localStorage, not server settings
+        const canvasModeSelect = document.getElementById('setting-canvas-mode');
+        const canvasEngineSelect = document.getElementById('setting-canvas-engine');
+        const canvasHeightSelect = document.getElementById('setting-canvas-height');
+        if (canvasModeSelect) canvasModeSelect.value = CanvasPlayback.getMode();
+        if (canvasEngineSelect) canvasEngineSelect.value = CanvasPlayback.getEnginePreference();
+        if (canvasHeightSelect) canvasHeightSelect.value = String(CanvasPlayback.getMaxHeight());
+        canvasModeSelect?.addEventListener('change', () => CanvasPlayback.setMode(canvasModeSelect.value));
+        canvasEngineSelect?.addEventListener('change', () => CanvasPlayback.setEnginePreference(canvasEngineSelect.value));
+        canvasHeightSelect?.addEventListener('change', () => CanvasPlayback.setMaxHeight(Number(canvasHeightSelect.value)));
         if (userAgentSelect) userAgentSelect.value = s.userAgentPreset || 'chrome';
         if (userAgentCustomInput) userAgentCustomInput.value = s.userAgentCustom || '';
         if (customUaContainer) {

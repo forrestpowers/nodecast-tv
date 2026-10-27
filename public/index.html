@@ -683,6 +683,45 @@
               </div>
               <div class="setting-item">
                 <div class="setting-info" style="flex: 1;">
+                  <span class="setting-label">Canvas Playback (this device)</span>
+                  <span class="setting-hint">Decode video with WebCodecs and draw it on a canvas instead of a video
+                    element, so it keeps playing in the Tesla browser outside of Park. For passengers only.
+                    Auto enables it in the Tesla browser.</span>
+                </div>
+                <select id="setting-canvas-mode" class="source-select" style="width: auto; min-width: 200px;">
+                  <option value="auto">Auto (Tesla browser)</option>
+                  <option value="on">Always</option>
+                  <option value="off">Off</option>
+                </select>
+              </div>
+              <div class="setting-item">
+                <div class="setting-info" style="flex: 1;">
+                  <span class="setting-label">Canvas Decoder</span>
+                  <span class="setting-hint">WebCodecs decodes H.264 (efficient, hardware). JSMpeg decodes MPEG-1 in
+                    WebAssembly and works where WebCodecs is missing, including the Tesla browser. Auto picks
+                    WebCodecs when available.</span>
+                </div>
+                <select id="setting-canvas-engine" class="source-select" style="width: auto; min-width: 200px;">
+                  <option value="auto">Auto</option>
+                  <option value="webcodecs">WebCodecs (H.264)</option>
+                  <option value="jsmpeg">JSMpeg (MPEG-1)</option>
+                </select>
+              </div>
+              <div class="setting-item">
+                <div class="setting-info" style="flex: 1;">
+                  <span class="setting-label">Canvas Max Resolution</span>
+                  <span class="setting-hint">Taller H.264 is re-encoded down to this height. Use 480p or 720p on
+                    older cars (MCU2).</span>
+                </div>
+                <select id="setting-canvas-height" class="source-select" style="width: auto; min-width: 200px;">
+                  <option value="360">360p</option>
+                  <option value="480">480p</option>
+                  <option value="720">720p</option>
+                  <option value="1080">1080p</option>
+                </select>
+              </div>
+              <div class="setting-item">
+                <div class="setting-info" style="flex: 1;">
                   <span class="setting-label">Stream Output Format</span>
                   <span class="setting-hint">Container format for Xtream streams. Try TS if you experience buffering
                     issues.</span>
@@ -1109,7 +1148,10 @@
   <script src="/js/components/HlsAudioRecovery.js?v=1"></script>
   <script src="/js/components/PlaybackProbe.js?v=2"></script>
   <script src="/js/components/PlayerFullscreen.js?v=1"></script>
-  <script src="/js/components/VideoPlayer.js?v=8"></script>
+  <script src="/js/canvas/webcodecs-pipeline.js?v=2"></script>
+  <script src="/js/canvas/jsmpeg-pipeline.js?v=3"></script>
+  <script src="/js/canvas/CanvasVideo.js?v=3"></script>
+  <script src="/js/components/VideoPlayer.js?v=10"></script>
   <script src="/js/components/ChannelList.js?v=4"></script>
   <script src="/js/components/SourceManager.js?v=3"></script>
   <script src="/js/components/EpgGuide.js?v=2"></script>
@@ -1119,7 +1161,7 @@
   <script src="/js/pages/MoviesPage.js?v=4"></script>
   <script src="/js/pages/SeriesPage.js?v=1"></script>
   <script src="/js/pages/Settings.js?v=2"></script>
-  <script src="/js/pages/WatchPage.js?v=10"></script>
+  <script src="/js/pages/WatchPage.js?v=12"></script>
   <script src="/js/app.js?v=5"></script>
 
 </body>

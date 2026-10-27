@@ -656,6 +656,12 @@ class VideoPlayer {
             // Determine if HLS or direct stream
             this.currentUrl = streamUrl;
 
+            // CHECK: Canvas playback (WebCodecs, no <video> element) for the Tesla browser
+            if (typeof CanvasPlayback !== 'undefined' && CanvasPlayback.isEnabled()) {
+                await this.playCanvas(channel, streamUrl, playbackGeneration);
+                return;
+            }
+
             // CHECK: Auto Transcode (Smart) - probe first, then decide
             if (this.settings.autoTranscode) {
                 console.log('[Player] Auto Transcode enabled. Probing stream...');
@@ -891,6 +897,52 @@ class VideoPlayer {
     }
 
     /**
+     * Play through the canvas pipeline: server MPEG-TS -> WebCodecs in a worker -> <canvas> + Web Audio.
+     * Keeps playing where <video> is suspended (Tesla browser outside of Park).
+     */
+    async playCanvas(channel, streamUrl, playbackGeneration) {
+        if (CanvasPlayback.isTeslaBrowser() && !CanvasPlayback.confirmPassengerUse()) {
+            this.stop();
+            return;
+        }
+        let info = null;
+        try {
+            info = await (this.playbackProbe ||= new PlaybackProbe(fetch)).read(streamUrl, { program: channel?.program });
+        } catch (err) {
+            if (err.name === 'AbortError') return;
+            console.warn('[Player] Canvas probe failed, re-encoding:', err.message);
+        }
+        if (this.playbackGeneration !== playbackGeneration) return;
+        if (info) {
+            this.currentStreamInfo = info;
+            this.updateQualityBadge();
+        }
+
+        const plan = CanvasPlayback.planFor(info);
+        const showMode = ({ engine, videoMode }) => {
+            if (this.playbackGeneration === playbackGeneration) this.updateTranscodeStatus('transcoding', CanvasPlayback.describe(engine, videoMode));
+        };
+        console.log('[Player] Canvas playback', plan);
+        showMode(plan);
+        (this.canvasVideo ||= new CanvasVideo(this.video)).start({
+            url: streamUrl,
+            live: true,
+            program: channel?.program ?? null,
+            ...plan,
+            height: CanvasPlayback.getMaxHeight(),
+            onModeChange: showMode,
+            onError: (message) => {
+                if (this.playbackGeneration === playbackGeneration) this.showError(`Canvas playback failed: ${message}`);
+            }
+        });
+
+        this.updateNowPlaying(channel);
+        this.showNowPlayingOverlay();
+        this.fetchEpgData(channel);
+        window.dispatchEvent(new CustomEvent('channelChanged', { detail: channel }));
+    }
+
+    /**
      * Helper to play HLS stream (reduces duplication)
      */
     playHls(url) {
@@ -1113,6 +1165,7 @@ class VideoPlayer {
      * Stop playback
      */
     stop() {
+        this.canvasVideo?.stop();
         this.playbackProbe?.cancel();
         this.zapController?.abort();
         this.zapController = null;
