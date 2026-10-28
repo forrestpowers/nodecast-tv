@@ -141,6 +141,8 @@ function analyzeProbeResult(probeResult, url, program = null) {
         audioChannels: audioStream?.channels || 0, // For Smart Audio Copy
         // progressive, tt, bb, tb, bt or unknown (HLS playlists usually report unknown)
         fieldOrder: videoStream?.field_order || 'unknown',
+        // B-frames rule out copying into WebRTC (null when unknown)
+        hasBFrames: videoStream?.has_b_frames === undefined ? null : Number(videoStream.has_b_frames) > 0,
         container: container,
         compatible: compatible,
         needsRemux: needsRemux,

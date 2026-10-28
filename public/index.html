@@ -698,13 +698,16 @@
                 <div class="setting-info" style="flex: 1;">
                   <span class="setting-label">Canvas Decoder</span>
                   <span class="setting-hint">WebCodecs decodes H.264 (efficient, hardware). JSMpeg decodes MPEG-1 in
-                    WebAssembly and works where WebCodecs is missing, including the Tesla browser. Auto picks
+                    WebAssembly and works where WebCodecs is missing, including the Tesla browser. WebRTC
+                    (Enhanced) streams over the server's WebRTC media port for smoother playback; it needs that
+                    port reachable (WEBRTC_PORT, default 8189 UDP/TCP) and falls back automatically. Auto picks
                     WebCodecs when available.</span>
                 </div>
                 <select id="setting-canvas-engine" class="source-select" style="width: auto; min-width: 200px;">
                   <option value="auto">Auto</option>
                   <option value="webcodecs">WebCodecs (H.264)</option>
                   <option value="jsmpeg">JSMpeg (MPEG-1)</option>
+                  <option value="webrtc">WebRTC (Enhanced)</option>
                 </select>
               </div>
               <div class="setting-item">
@@ -1150,7 +1153,8 @@
   <script src="/js/components/PlayerFullscreen.js?v=1"></script>
   <script src="/js/canvas/webcodecs-pipeline.js?v=2"></script>
   <script src="/js/canvas/jsmpeg-pipeline.js?v=3"></script>
-  <script src="/js/canvas/CanvasVideo.js?v=3"></script>
+  <script src="/js/canvas/webrtc-pipeline.js?v=4"></script>
+  <script src="/js/canvas/CanvasVideo.js?v=4"></script>
   <script src="/js/components/VideoPlayer.js?v=10"></script>
   <script src="/js/components/ChannelList.js?v=4"></script>
   <script src="/js/components/SourceManager.js?v=3"></script>

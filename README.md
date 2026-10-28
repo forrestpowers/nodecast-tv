@@ -223,6 +223,30 @@ Add the receiver's bouquet export URL (for example, `http://receiver/web/service
 
 For a single-tuner receiver, enable **Zap before streaming (Enigma2/OpenWebif)** on that source. The player releases its previous stream, tunes the configured receiver, and waits for the source's zap delay before starting playback. The default delay is 1500 ms; values from 0 to 10000 ms are supported. Stop and changing channels cancel pending playback startup. Live TV continues playing when you minimize the player and browse the guide or other pages. The receiver address comes from the administrator-managed source URL, and only imported channels can be tuned.
 
+## Canvas Playback (Tesla and other browsers that pause video)
+
+Some browsers, like the Tesla in-car browser outside of Park, suspend `<video>` elements. Canvas playback decodes the stream itself and draws it on a `<canvas>` instead. It turns on automatically in the Tesla browser and can be set per device under **Settings → Transcoding → Canvas Playback**. Video playback while driving is for passengers only.
+
+| Decoder | How it works | Needs |
+|---------|--------------|-------|
+| **WebCodecs** (Auto's first choice) | Server streams H.264 + AAC over HTTP; decoded in a worker | WebCodecs (HTTPS) |
+| **JSMpeg** | Server streams MPEG-1 + MP2 over HTTP; decoded in WebAssembly | Any browser |
+| **WebRTC (Enhanced)** | Server relays H.264 + Opus over WebRTC (bundled MediaMTX); frames drawn with `MediaStreamTrackProcessor`, sound through an `<audio>` element | The server's WebRTC media port reachable from the browser |
+
+WebRTC is opt-in. If its session cannot start or the media port cannot be reached within a few seconds, playback switches to WebCodecs (or JSMpeg) automatically. WebRTC cannot carry B-frames, so most IPTV H.264 is re-encoded for it (720p by default, set by **Canvas Max Resolution**).
+
+To use WebRTC in Docker, publish the media port and tell MediaMTX which address browsers should connect to. The Cloudflare Tunnel or reverse proxy still carries the page and signaling; media goes straight to this port.
+
+```yaml
+    ports:
+      - "8189:8189/udp"
+      - "8189:8189/tcp"   # ICE-TCP fallback for networks that block UDP
+    environment:
+      - WEBRTC_HOSTS=203.0.113.10,192.168.1.20   # public IP (or DNS-only hostname) and LAN IP
+```
+
+Forward port 8189 (UDP and TCP) on your router for use away from home. A Cloudflare-proxied hostname will not work in `WEBRTC_HOSTS`, since it resolves to Cloudflare. Other settings: `WEBRTC_PORT` (default 8189), `WEBRTC_STUN` (e.g. `stun:stun.l.google.com:19302`, so MediaMTX discovers the public IP itself), `WEBRTC_ENABLED=false`, and `MEDIAMTX_PATH` for installs outside Docker (MediaMTX 1.21 or newer).
+
 ## Troubleshooting
 
 ### Video Won't Play (Black Screen or Loading Forever)

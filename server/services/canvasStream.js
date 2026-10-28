@@ -12,6 +12,9 @@ const { FFMPEG_PROTOCOL_WHITELIST } = require('./urlSecurity');
  *   h264   H.264 Annex-B + AAC/ADTS  -> WebCodecs (hardware decode where available)
  *   mpeg1  MPEG-1 video + MP2        -> JSMpeg (WebAssembly; for browsers without WebCodecs,
  *                                       which includes the Tesla browser today)
+ *
+ * buildWebrtcArgs publishes the same input to the local MediaMTX instead (H.264 without B-frames
+ * + Opus over RTSP), which serves it to the browser over WebRTC (see webrtcRelay.js).
  */
 
 const MAX_HEIGHTS = new Set([360, 480, 720, 1080]);
@@ -60,21 +63,21 @@ function deinterlaceFilter(deinterlace) {
     return deinterlace === 'double' ? 'bwdif=mode=send_field' : 'bwdif=mode=send_frame:deint=interlaced';
 }
 
-function h264Args(videoMode, maxHeight, deinterlace) {
+function h264Args(videoMode, maxHeight, deinterlace, { profile = 'main', keyframeSeconds = 2 } = {}) {
     if (videoMode === 'copy') return ['-c:v', 'copy'];
     return [
         '-c:v', 'libx264',
         '-preset', 'veryfast',
         // No B-frames or lookahead: frames leave the encoder in display order with low latency.
         '-tune', 'zerolatency',
-        '-profile:v', 'main',
+        '-profile:v', profile,
         '-pix_fmt', 'yuv420p',
         '-vf', `${deinterlaceFilter(deinterlace)},scale=-2:'min(ih,${maxHeight})'`,
         '-crf', '23',
         '-maxrate', maxHeight > 720 ? '6M' : '3500k',
         '-bufsize', maxHeight > 720 ? '12M' : '7M',
         // Regular IDR frames let the client start, recover and resync quickly.
-        '-force_key_frames', 'expr:gte(t,n_forced*2)',
+        '-force_key_frames', `expr:gte(t,n_forced*${keyframeSeconds})`,
         '-sc_threshold', '0'
     ];
 }
@@ -103,16 +106,8 @@ function audioArgs(codec, audioMode) {
     return [...encoder, '-af', 'aresample=async=1:first_pts=0'];
 }
 
-function buildCanvasArgs(url, {
-    userAgent, program = null, seek = 0, codec = 'h264', videoMode = 'encode', audioMode = 'encode',
-    deinterlace = 'auto', maxHeight = DEFAULT_MAX_HEIGHT, live = false
-} = {}) {
+function inputArgs(url, { userAgent, seek = 0, live = false, realtime = false }) {
     const seeking = seek > 0 && !live;
-    const media = [
-        ...(codec === 'mpeg1' ? mpeg1Args(maxHeight, deinterlace) : h264Args(videoMode, maxHeight, deinterlace)),
-        ...audioArgs(codec, audioMode)
-    ];
-
     return [
         '-hide_banner',
         '-loglevel', 'warning',
@@ -129,10 +124,32 @@ function buildCanvasArgs(url, {
         '-reconnect_delay_max', '10',
         // Seeking needs Range requests; otherwise avoid them for providers that reject them.
         ...(seeking ? ['-ss', String(seek)] : ['-seekable', '0']),
-        '-i', url,
+        // Read at the source's own pace (for a server that relays in real time, not a client that buffers).
+        ...(realtime ? ['-re'] : []),
+        '-i', url
+    ];
+}
+
+function mapArgs(program) {
+    return [
         '-map', program === null ? '0:v:0' : `0:p:${program}:v:0`,
         '-map', program === null ? '0:a:0?' : `0:p:${program}:a:0?`,
-        '-sn', '-dn',
+        '-sn', '-dn'
+    ];
+}
+
+function buildCanvasArgs(url, {
+    userAgent, program = null, seek = 0, codec = 'h264', videoMode = 'encode', audioMode = 'encode',
+    deinterlace = 'auto', maxHeight = DEFAULT_MAX_HEIGHT, live = false
+} = {}) {
+    const media = [
+        ...(codec === 'mpeg1' ? mpeg1Args(maxHeight, deinterlace) : h264Args(videoMode, maxHeight, deinterlace)),
+        ...audioArgs(codec, audioMode)
+    ];
+
+    return [
+        ...inputArgs(url, { userAgent, seek, live }),
+        ...mapArgs(program),
         ...media,
         '-max_muxing_queue_size', '2048',
         '-f', 'mpegts',
@@ -143,4 +160,27 @@ function buildCanvasArgs(url, {
     ];
 }
 
-module.exports = { parseCanvasOptions, buildCanvasArgs, DEFAULT_MAX_HEIGHT };
+/**
+ * WebRTC target: publish to MediaMTX over RTSP. WebRTC carries neither B-frames (MediaMTX drops
+ * such readers) nor AAC, so video is copied only when the client saw no B-frames, and audio is
+ * always Opus. Encodes use constrained baseline and a 1 s GOP: WebRTC players can only join or
+ * recover from packet loss at a keyframe, and the server cannot request one from ffmpeg.
+ */
+function buildWebrtcArgs(url, rtspUrl, {
+    userAgent, program = null, seek = 0, videoMode = 'encode', deinterlace = 'auto',
+    maxHeight = DEFAULT_MAX_HEIGHT, live = false
+} = {}) {
+    return [
+        ...inputArgs(url, { userAgent, seek, live, realtime: true }),
+        ...mapArgs(program),
+        ...h264Args(videoMode, maxHeight, deinterlace, { profile: 'baseline', keyframeSeconds: 1 }),
+        '-c:a', 'libopus', '-ac', '2', '-ar', '48000', '-b:a', '128k',
+        '-af', 'aresample=async=1:first_pts=0',
+        '-max_muxing_queue_size', '2048',
+        '-f', 'rtsp',
+        '-rtsp_transport', 'tcp',
+        rtspUrl
+    ];
+}
+
+module.exports = { parseCanvasOptions, buildCanvasArgs, buildWebrtcArgs, DEFAULT_MAX_HEIGHT };

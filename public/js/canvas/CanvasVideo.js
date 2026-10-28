@@ -3,11 +3,14 @@
  *
  * Plays streams without a <video> element, which browsers like the Tesla in-car browser
  * suspend outside of Park. /api/canvas/stream delivers MPEG-TS, the browser decodes it itself
- * and draws onto a <canvas>; sound goes through Web Audio. Two engines:
+ * and draws onto a <canvas>; sound goes through Web Audio. Three engines:
  *
  *   webcodecs  H.264 + AAC, decoded with WebCodecs in a worker (webcodecs-pipeline.js)
  *   jsmpeg     MPEG-1 + MP2, decoded by JSMpeg in WebAssembly (jsmpeg-pipeline.js); works
  *              without WebCodecs, which the Tesla browser does not have today
+ *   webrtc     H.264 + Opus over WebRTC from the server's MediaMTX, frames drawn via
+ *              MediaStreamTrackProcessor, sound through an <audio> element (webrtc-pipeline.js).
+ *              Opt-in ("Enhanced"): it needs the server's WebRTC media port reachable.
  *
  * CanvasVideo takes over the existing <video> element's media API while active (play, pause,
  * paused, currentTime, duration, volume, muted, src, ...) and fires the usual media events on
@@ -16,7 +19,7 @@
 
 const CanvasPlayback = {
     MODE_KEY: 'nodecast-canvas-mode',       // 'auto' | 'on' | 'off' (per device)
-    ENGINE_KEY: 'nodecast-canvas-engine',   // 'auto' | 'webcodecs' | 'jsmpeg'
+    ENGINE_KEY: 'nodecast-canvas-engine',   // 'auto' | 'webcodecs' | 'jsmpeg' | 'webrtc'
     HEIGHT_KEY: 'nodecast-canvas-height',   // max decoded height
     ACK_KEY: 'nodecast-canvas-ack',
 
@@ -28,18 +31,22 @@ const CanvasPlayback = {
         return typeof (window.AudioContext || window.webkitAudioContext) === 'function';
     },
 
-    /** The engine this device will use, or null when canvas playback is impossible here. */
-    getEngine() {
+    /**
+     * The engine this device will use, or null when canvas playback is impossible here.
+     * WebRTC is only used when chosen; `streamEngine` skips it (the fallback when WebRTC fails).
+     */
+    getEngine({ streamEngine = false } = {}) {
         if (!this.hasAudio()) return null;
         const webcodecs = window.WebCodecsPipeline?.isSupported() ? 'webcodecs' : null;
         const jsmpeg = window.JsmpegPipeline?.isSupported() ? 'jsmpeg' : null;
         const preference = this.read(this.ENGINE_KEY, 'auto');
+        if (preference === 'webrtc' && !streamEngine && window.WebRtcPipeline?.isSupported()) return 'webrtc';
         if (preference === 'jsmpeg') return jsmpeg || webcodecs;
         if (preference === 'webcodecs') return webcodecs || jsmpeg;
         return webcodecs || jsmpeg;
     },
     getEnginePreference() { return this.read(this.ENGINE_KEY, 'auto'); },
-    setEnginePreference(engine) { if (['auto', 'webcodecs', 'jsmpeg'].includes(engine)) this.write(this.ENGINE_KEY, engine); },
+    setEnginePreference(engine) { if (['auto', 'webcodecs', 'jsmpeg', 'webrtc'].includes(engine)) this.write(this.ENGINE_KEY, engine); },
 
     isSupported() { return this.getEngine() !== null; },
 
@@ -75,21 +82,36 @@ const CanvasPlayback = {
         return info?.audio === 'aac' && channels >= 1 && channels <= 2 ? 'copy' : 'encode';
     },
 
-    /** How to play a probed stream on this device (probe info may be null). */
-    planFor(info) {
-        const engine = this.getEngine();
+    /** WebRTC engine: copy only when the probe saw no B-frames, which WebRTC cannot carry (most IPTV H.264 has them). */
+    webrtcVideoModeFor(info) {
+        return this.videoModeFor(info) === 'copy' && info?.hasBFrames === false ? 'copy' : 'encode';
+    },
+
+    planForEngine(engine, info) {
+        const videoMode = engine === 'webcodecs' ? this.videoModeFor(info)
+            : engine === 'webrtc' ? this.webrtcVideoModeFor(info) : 'encode';
         return {
             engine,
-            videoMode: engine === 'webcodecs' ? this.videoModeFor(info) : 'encode',
+            videoMode,
+            // WebRTC always gets Opus from the server.
             audioMode: engine === 'webcodecs' ? this.audioModeFor(info) : 'encode',
             // Known interlaced sources keep their full field rate (1080i59.94 -> 59.94p).
             deinterlace: this.isInterlaced(info) ? 'double' : 'auto'
         };
     },
 
+    /** How to play a probed stream on this device (probe info may be null). */
+    planFor(info) {
+        const plan = this.planForEngine(this.getEngine(), info);
+        // If the WebRTC media port turns out to be unreachable, carry on with a streaming engine.
+        if (plan.engine === 'webrtc') plan.fallback = this.planForEngine(this.getEngine({ streamEngine: true }), info);
+        return plan;
+    },
+
     /** Status label for the player badge. */
     describe(engine, videoMode) {
         if (engine === 'jsmpeg') return 'Canvas (MPEG-1)';
+        if (engine === 'webrtc') return videoMode === 'copy' ? 'Canvas (WebRTC)' : 'Canvas (WebRTC, Transcoding)';
         return videoMode === 'copy' ? 'Canvas' : 'Canvas (Transcoding)';
     },
 
@@ -112,7 +134,7 @@ const CanvasPlayback = {
         try { localStorage.setItem(key, value); } catch (_) { /* storage unavailable */ }
     },
 
-    /** ?canvas=on|off|auto and ?canvasEngine=auto|webcodecs|jsmpeg set this device's choices. */
+    /** ?canvas=on|off|auto and ?canvasEngine=auto|webcodecs|jsmpeg|webrtc set this device's choices. */
     applyUrlOverride(search = window.location.search) {
         const params = new URLSearchParams(search);
         const mode = params.get('canvas');
@@ -170,9 +192,10 @@ class CanvasVideo {
      *   seek       start offset in seconds (VOD)
      *   duration   known duration in seconds (VOD)
      *   program    MPEG-TS program number
-     *   engine       'webcodecs' | 'jsmpeg' (defaults to CanvasPlayback.getEngine())
-     *   videoMode    'copy' | 'encode' (WebCodecs engine)
+     *   engine       'webcodecs' | 'jsmpeg' | 'webrtc' (defaults to CanvasPlayback.getEngine())
+     *   videoMode    'copy' | 'encode' (WebCodecs and WebRTC engines)
      *   audioMode    'copy' | 'encode' (WebCodecs engine)
+     *   fallback     plan ({ engine, videoMode, audioMode, deinterlace }) to switch to if WebRTC fails
      *   deinterlace  'auto' | 'double'
      *   height       max decoded height
      *   onError      (message) => void
@@ -199,12 +222,13 @@ class CanvasVideo {
         const { url, live, engine, videoMode, audioMode, deinterlace, height, program } = this.options;
         const query = new URLSearchParams({ url, height: String(height) });
         if (engine === 'jsmpeg') query.set('codec', 'mpeg1');
+        else if (engine === 'webrtc') query.set('video', videoMode);
         else { query.set('video', videoMode); query.set('audio', audioMode); }
         if (deinterlace !== 'auto') query.set('deinterlace', deinterlace);
         if (live) query.set('live', '1');
         else if (seek > 0) query.set('seek', seek.toFixed(3));
         if (program != null) query.set('program', String(program));
-        return '/api/canvas/stream?' + query;
+        return (engine === 'webrtc' ? '/api/canvas/webrtc/session?' : '/api/canvas/stream?') + query;
     }
 
     restart(seek) {
@@ -217,7 +241,7 @@ class CanvasVideo {
         canvas.className = 'canvas-player';
         this.video.insertAdjacentElement('afterend', canvas);
 
-        const Pipeline = this.options.engine === 'jsmpeg' ? JsmpegPipeline : WebCodecsPipeline;
+        const Pipeline = { jsmpeg: JsmpegPipeline, webrtc: WebRtcPipeline }[this.options.engine] || WebCodecsPipeline;
         this.pipeline = new Pipeline(this.hostFor(generation), canvas, this.streamUrl(this.seekOffset), sharedCanvasAudioContext());
         this.pipeline.setVolume(this.gainValue());
         this.pipeline.start();
@@ -302,6 +326,12 @@ class CanvasVideo {
             this.restart(position);
         };
 
+        if (options.engine === 'webrtc') {
+            // Copied H.264 that never showed up (B-frames): let the server encode it.
+            if (code === 'decode' && options.videoMode === 'copy') return retry({ videoMode: 'encode' }, 'WebRTC copy produced no video, re-encoding');
+            // Media port unreachable, MediaMTX missing, ...: stream over HTTP instead.
+            if (options.fallback?.engine) return retry({ ...options.fallback, fallback: null }, 'WebRTC unavailable, switching engines');
+        }
         if (code === 'unsupported-audio') {
             // Copied AAC the browser cannot decode (e.g. HE-AAC variants): re-encode it.
             if (options.audioMode === 'copy') return retry({ audioMode: 'encode' }, 'Copied audio failed, re-encoding');
@@ -338,6 +368,12 @@ class CanvasVideo {
             return Promise.resolve();
         }
         if (!this.pausedValue) return Promise.resolve();
+        if (this.pipeline?.restartOnResume) {
+            // The pipeline let its server session go while paused: pick up where it stopped.
+            this.restart(this.getCurrentTime());
+            this.emit('play');
+            return Promise.resolve();
+        }
         this.pausedValue = false;
         this.pipeline?.resume();
         this.emit('play');
