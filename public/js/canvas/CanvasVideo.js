@@ -23,8 +23,52 @@ const CanvasPlayback = {
     HEIGHT_KEY: 'nodecast-canvas-height',   // max decoded height
     ACK_KEY: 'nodecast-canvas-ack',
 
-    isTeslaBrowser(ua = navigator.userAgent) {
-        return /Tesla|QtCarBrowser/i.test(ua || '');
+    /** Whether this looks like the Tesla in-car browser (see detectTesla). */
+    isTeslaBrowser() {
+        return this.detectTesla().isTesla;
+    },
+
+    /**
+     * Tesla browser detection, after EVStream's: a Tesla token in the user agent is certain.
+     * Without one, only desktop-Linux Chromium qualifies, scored by the car's screen (1254x784 CSS
+     * pixels; 1920x1200 Model 3/Y or 2200x1300 Model S/X panels), touch without hover, a
+     * fractional pixel ratio and few CPU cores. 3 points or more counts as likely.
+     * @returns {{ isTesla: boolean, confidence: 'certain'|'likely'|'unlikely', score: number, reasons: string[] }}
+     */
+    detectTesla(signals = this.readDeviceSignals()) {
+        const result = (confidence, score, reasons) => ({ isTesla: confidence !== 'unlikely', confidence, score, reasons });
+        const ua = signals.userAgent || '';
+        if (/Tesla(?:Browser)?\/[\w.-]+|\bTesla(?:Browser)?\b|QtCarBrowser/i.test(ua)) return result('certain', 10, ['ua-token']);
+        if (/Android|iPhone|iPad|iPod|Mobile Safari|Windows Phone/i.test(ua) || !/X11;[^)]*Linux/i.test(ua)) return result('unlikely', 0, ['not-linux-x11']);
+        if (!/Chrom(?:e|ium)\/\d+/i.test(ua)) return result('unlikely', 0, ['not-chromium']);
+
+        const near = (value, target) => Math.abs(value - target) <= Math.max(2, target * 0.02);
+        const matches = (w, h, sizes) => sizes.some(([a, b]) => (near(w, a) && near(h, b)) || (near(w, b) && near(h, a)));
+        const { screenWidth: w = 0, screenHeight: h = 0, devicePixelRatio: ratio = 1 } = signals;
+        const reasons = [];
+        let score = 0;
+        const add = (reason, points) => { reasons.push(reason); score += points; };
+        if (matches(w, h, [[1254, 784]])) add('known-css-screen', 2.5);
+        if (matches(Math.round(w * ratio), Math.round(h * ratio), [[1920, 1200], [2200, 1300]])) add('known-panel', 1.5);
+        if (signals.maxTouchPoints > 0 || signals.coarsePointer) add('touchscreen', 2);
+        if (!signals.hoverCapable) add('no-hover', 1);
+        if (Number.isFinite(ratio) && ratio > 1.05 && Math.abs(ratio - Math.round(ratio)) > 0.05) add('fractional-ratio', 1);
+        if (signals.cpuCores > 0 && signals.cpuCores <= 4) add('few-cores', 0.5);
+        return result(score >= 3 ? 'likely' : 'unlikely', score, reasons);
+    },
+
+    readDeviceSignals() {
+        const media = (query) => { try { return window.matchMedia(query).matches; } catch (_) { return false; } };
+        return {
+            userAgent: navigator.userAgent || '',
+            screenWidth: window.screen?.width || 0,
+            screenHeight: window.screen?.height || 0,
+            devicePixelRatio: window.devicePixelRatio || 1,
+            maxTouchPoints: navigator.maxTouchPoints || 0,
+            coarsePointer: media('(pointer: coarse)'),
+            hoverCapable: media('(hover: hover)'),
+            cpuCores: navigator.hardwareConcurrency || 0
+        };
     },
 
     hasAudio() {
