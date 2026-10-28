@@ -235,6 +235,8 @@ Some browsers, like the Tesla in-car browser outside of Park, suspend `<video>` 
 
 WebRTC is opt-in. If its session cannot start or the media port cannot be reached within a few seconds, playback switches to WebCodecs (or JSMpeg) automatically. WebRTC cannot carry B-frames, so most IPTV H.264 is re-encoded for it (720p by default, set by **Canvas Max Resolution**).
 
+H.264 re-encodes for canvas playback follow **Settings → Transcoding → Hardware Encoder**: with VAAPI or QSV (or Auto on such a machine) they run entirely on the GPU, decoding, deinterlacing and scaling included (about a tenth of a CPU core for 1080p59.94 → 720p on an Intel iGPU, against more than a full core for libx264). A one-time test encode checks the GPU first, and a stream the GPU can't handle steps down to GPU encode with CPU decoding, then to libx264. `CANVAS_HW_DECODE=false` keeps decoding and scaling on the CPU.
+
 To use WebRTC in Docker, publish the media port and tell MediaMTX which address browsers should connect to. The Cloudflare Tunnel or reverse proxy still carries the page and signaling; media goes straight to this port.
 
 ```yaml

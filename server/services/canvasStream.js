@@ -21,6 +21,8 @@ const MAX_HEIGHTS = new Set([360, 480, 720, 1080]);
 const DEFAULT_MAX_HEIGHT = 720;
 const MAX_SEEK_SECONDS = 7 * 24 * 60 * 60;
 const MPEG1_BITRATES = { 360: 900, 480: 1400, 720: 2500, 1080: 4500 }; // kbit/s; MPEG-1 needs more than H.264
+const VAAPI_BITRATES = { 360: 1000, 480: 1600, 720: 3000, 1080: 5000 };  // kbit/s; VBR targets for h264_vaapi
+const SOFTWARE_ENCODER = Object.freeze({ kind: 'software' });
 
 function parseCanvasOptions(query = {}) {
     const program = parseProgram(query.program);
@@ -63,8 +65,13 @@ function deinterlaceFilter(deinterlace) {
     return deinterlace === 'double' ? 'bwdif=mode=send_field' : 'bwdif=mode=send_frame:deint=interlaced';
 }
 
-function h264Args(videoMode, maxHeight, deinterlace, { profile = 'main', keyframeSeconds = 2 } = {}) {
+/**
+ * Encoder for H.264 re-encodes: { kind: 'software' } (libx264) or
+ * { kind: 'vaapi', device, lowPower, hwDecode } (Intel/AMD GPU, see canvasEncoder.js).
+ */
+function h264Args(videoMode, maxHeight, deinterlace, { profile = 'main', keyframeSeconds = 2, encoder = SOFTWARE_ENCODER } = {}) {
     if (videoMode === 'copy') return ['-c:v', 'copy'];
+    if (encoder.kind === 'vaapi') return vaapiArgs(maxHeight, deinterlace, { profile, keyframeSeconds, encoder });
     return [
         '-c:v', 'libx264',
         '-preset', 'veryfast',
@@ -79,6 +86,42 @@ function h264Args(videoMode, maxHeight, deinterlace, { profile = 'main', keyfram
         // Regular IDR frames let the client start, recover and resync quickly.
         '-force_key_frames', `expr:gte(t,n_forced*${keyframeSeconds})`,
         '-sc_threshold', '0'
+    ];
+}
+
+/**
+ * GPU encode. With hwDecode, frames never leave the GPU: decode, deinterlace_vaapi (auto=1 only
+ * touches interlaced frames; rate=field is the 'double' mode), scale_vaapi, h264_vaapi. That is
+ * ~10% of one core for 1080p59.94 -> 720p on an Intel iGPU, against ~75% when the CPU decodes and
+ * scales and ~105% for libx264. Without hwDecode (sources the GPU can't decode), the CPU decodes,
+ * deinterlaces and scales with the libx264 filters, and only the encode runs on the GPU.
+ */
+function vaapiArgs(maxHeight, deinterlace, { profile, keyframeSeconds, encoder }) {
+    const kbps = VAAPI_BITRATES[maxHeight];
+    const filters = encoder.hwDecode
+        ? `deinterlace_vaapi=${deinterlace === 'double' ? 'rate=field:' : ''}auto=1,scale_vaapi=w=-2:h='min(ih,${maxHeight})':format=nv12`
+        : `${deinterlaceFilter(deinterlace)},scale=-2:'min(ih,${maxHeight})',format=nv12,hwupload`;
+    return [
+        '-vf', filters,
+        '-c:v', 'h264_vaapi',
+        '-profile:v', profile === 'baseline' ? 'constrained_baseline' : profile,
+        '-bf', '0',
+        ...(encoder.lowPower ? ['-low_power', '1'] : []),
+        '-rc_mode', 'VBR',
+        '-b:v', `${kbps}k`,
+        '-maxrate', `${Math.round(kbps * 1.25)}k`,
+        '-bufsize', `${kbps * 2}k`,
+        '-force_key_frames', `expr:gte(t,n_forced*${keyframeSeconds})`
+    ];
+}
+
+/** Input options that open the GPU for a VAAPI encode (and optionally decode). */
+function hwInputArgs(videoMode, encoder) {
+    if (videoMode === 'copy' || encoder.kind !== 'vaapi') return [];
+    return [
+        '-init_hw_device', `vaapi=va:${encoder.device}`,
+        '-filter_hw_device', 'va',
+        ...(encoder.hwDecode ? ['-hwaccel', 'vaapi', '-hwaccel_device', 'va', '-hwaccel_output_format', 'vaapi'] : [])
     ];
 }
 
@@ -106,7 +149,7 @@ function audioArgs(codec, audioMode) {
     return [...encoder, '-af', 'aresample=async=1:first_pts=0'];
 }
 
-function inputArgs(url, { userAgent, seek = 0, live = false, realtime = false }) {
+function inputArgs(url, { userAgent, seek = 0, live = false, realtime = false, hw = [] }) {
     const seeking = seek > 0 && !live;
     return [
         '-hide_banner',
@@ -126,6 +169,7 @@ function inputArgs(url, { userAgent, seek = 0, live = false, realtime = false })
         ...(seeking ? ['-ss', String(seek)] : ['-seekable', '0']),
         // Read at the source's own pace (for a server that relays in real time, not a client that buffers).
         ...(realtime ? ['-re'] : []),
+        ...hw,
         '-i', url
     ];
 }
@@ -140,15 +184,17 @@ function mapArgs(program) {
 
 function buildCanvasArgs(url, {
     userAgent, program = null, seek = 0, codec = 'h264', videoMode = 'encode', audioMode = 'encode',
-    deinterlace = 'auto', maxHeight = DEFAULT_MAX_HEIGHT, live = false
+    deinterlace = 'auto', maxHeight = DEFAULT_MAX_HEIGHT, live = false, encoder = SOFTWARE_ENCODER
 } = {}) {
+    // MPEG-1 has no GPU encoder; JSMpeg output is always libavcodec.
+    const gpu = codec === 'mpeg1' ? SOFTWARE_ENCODER : encoder;
     const media = [
-        ...(codec === 'mpeg1' ? mpeg1Args(maxHeight, deinterlace) : h264Args(videoMode, maxHeight, deinterlace)),
+        ...(codec === 'mpeg1' ? mpeg1Args(maxHeight, deinterlace) : h264Args(videoMode, maxHeight, deinterlace, { encoder: gpu })),
         ...audioArgs(codec, audioMode)
     ];
 
     return [
-        ...inputArgs(url, { userAgent, seek, live }),
+        ...inputArgs(url, { userAgent, seek, live, hw: hwInputArgs(videoMode, gpu) }),
         ...mapArgs(program),
         ...media,
         '-max_muxing_queue_size', '2048',
@@ -168,12 +214,12 @@ function buildCanvasArgs(url, {
  */
 function buildWebrtcArgs(url, rtspUrl, {
     userAgent, program = null, seek = 0, videoMode = 'encode', deinterlace = 'auto',
-    maxHeight = DEFAULT_MAX_HEIGHT, live = false
+    maxHeight = DEFAULT_MAX_HEIGHT, live = false, encoder = SOFTWARE_ENCODER
 } = {}) {
     return [
-        ...inputArgs(url, { userAgent, seek, live, realtime: true }),
+        ...inputArgs(url, { userAgent, seek, live, realtime: true, hw: hwInputArgs(videoMode, encoder) }),
         ...mapArgs(program),
-        ...h264Args(videoMode, maxHeight, deinterlace, { profile: 'baseline', keyframeSeconds: 1 }),
+        ...h264Args(videoMode, maxHeight, deinterlace, { profile: 'baseline', keyframeSeconds: 1, encoder }),
         '-c:a', 'libopus', '-ac', '2', '-ar', '48000', '-b:a', '128k',
         '-af', 'aresample=async=1:first_pts=0',
         '-max_muxing_queue_size', '2048',
@@ -183,4 +229,4 @@ function buildWebrtcArgs(url, rtspUrl, {
     ];
 }
 
-module.exports = { parseCanvasOptions, buildCanvasArgs, buildWebrtcArgs, DEFAULT_MAX_HEIGHT };
+module.exports = { parseCanvasOptions, buildCanvasArgs, buildWebrtcArgs, vaapiArgs, SOFTWARE_ENCODER, DEFAULT_MAX_HEIGHT };

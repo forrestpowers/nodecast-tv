@@ -3,7 +3,8 @@ const express = require('express');
 const router = express.Router();
 const { spawn } = require('child_process');
 const db = require('../db');
-const { parseCanvasOptions, buildCanvasArgs, buildWebrtcArgs } = require('../services/canvasStream');
+const { parseCanvasOptions, buildCanvasArgs, buildWebrtcArgs, SOFTWARE_ENCODER } = require('../services/canvasStream');
+const { resolveCanvasEncoder, fallbackEncoder, describeEncoder } = require('../services/canvasEncoder');
 const { relay } = require('../services/webrtcRelay');
 
 /**
@@ -25,38 +26,52 @@ router.get('/stream', async (req, res) => {
 
     const ffmpegPath = req.app.locals.ffmpegPath || 'ffmpeg';
     const settings = await db.settings.get();
-    const args = buildCanvasArgs(url, { ...options, userAgent: db.getUserAgent(settings) });
-
-    console.log(`[Canvas] Starting ${options.codec} (video ${options.videoMode}, audio ${options.audioMode}, deinterlace ${options.deinterlace}) stream at ${options.seek}s for: ${redactUrl(url)}`);
-
-    let ffmpeg;
-    try {
-        ffmpeg = spawn(ffmpegPath, args);
-    } catch (spawnErr) {
-        console.error('[Canvas] Failed to spawn FFmpeg:', redactText(spawnErr.message));
-        return res.status(500).json({ error: 'FFmpeg spawn failed' });
-    }
+    const userAgent = db.getUserAgent(settings);
+    const encodesH264 = options.codec === 'h264' && options.videoMode === 'encode';
+    const encoder = encodesH264 ? await resolveCanvasEncoder(settings.hwEncoder, ffmpegPath) : SOFTWARE_ENCODER;
 
     res.setHeader('Content-Type', 'video/mp2t');
     res.setHeader('Cache-Control', 'no-store');
     res.setHeader('X-Accel-Buffering', 'no');
-    ffmpeg.stdout.pipe(res);
 
-    ffmpeg.stderr.on('data', (data) => {
-        const msg = data.toString();
-        if (/error/i.test(msg)) console.log(`[Canvas FFmpeg] ${redactText(msg)}`);
+    let closed = false, ffmpeg = null;
+    res.on('close', () => {
+        closed = true;
+        ffmpeg?.kill('SIGKILL');
     });
 
-    res.on('close', () => ffmpeg.kill('SIGKILL'));
+    const start = (encoder) => {
+        console.log(`[Canvas] Starting ${options.codec} (video ${options.videoMode}${encodesH264 ? ` via ${describeEncoder(encoder)}` : ''}, audio ${options.audioMode}, deinterlace ${options.deinterlace}) stream at ${options.seek}s for: ${redactUrl(url)}`);
+        const child = ffmpeg = spawn(ffmpegPath, buildCanvasArgs(url, { ...options, userAgent, encoder }));
+        let produced = false, stderrTail = '';
+        child.stdout.once('data', () => { produced = true; });
+        child.stdout.pipe(res, { end: false });
 
-    ffmpeg.on('exit', (code) => {
-        if (code !== null && code !== 0 && code !== 255) console.error(`[Canvas] FFmpeg exited with code ${code}`);
-    });
+        child.stderr.on('data', (data) => {
+            const msg = data.toString();
+            stderrTail = (stderrTail + msg).slice(-2000);
+            if (/error/i.test(msg)) console.log(`[Canvas FFmpeg] ${redactText(msg)}`);
+        });
 
-    ffmpeg.on('error', (err) => {
-        console.error('[Canvas] Failed to spawn FFmpeg:', redactText(err.message));
-        if (!res.headersSent) res.status(500).json({ error: 'Canvas stream failed to start' });
-    });
+        child.on('close', (code) => {
+            if (closed || ffmpeg !== child) return;
+            // The GPU failed before a single byte went out: the client never noticed, so step down.
+            if (!produced && code !== 0 && encoder.kind !== 'software') {
+                const next = fallbackEncoder(encoder);
+                console.warn(`[Canvas] ${describeEncoder(encoder)} failed (${redactText(stderrTail.trim().split('\n').pop() || `code ${code}`)}), retrying with ${describeEncoder(next)}`);
+                child.stdout.unpipe(res);
+                return start(next);
+            }
+            if (code !== null && code !== 0 && code !== 255) console.error(`[Canvas] FFmpeg exited with code ${code}`);
+            res.end();
+        });
+
+        child.on('error', (err) => {
+            console.error('[Canvas] Failed to spawn FFmpeg:', redactText(err.message));
+            if (!res.headersSent) res.status(500).json({ error: 'Canvas stream failed to start' });
+        });
+    };
+    start(encoder);
 });
 
 /**
@@ -87,11 +102,11 @@ router.get('/webrtc/session', async (req, res) => {
 
     const ffmpegPath = req.app.locals.ffmpegPath || 'ffmpeg';
     const settings = await db.settings.get();
+    const userAgent = db.getUserAgent(settings);
+    const encoder = options.videoMode === 'encode' ? await resolveCanvasEncoder(settings.hwEncoder, ffmpegPath) : SOFTWARE_ENCODER;
     const session = relay.createSession(req.user?.id);
-    const args = buildWebrtcArgs(url, relay.rtspUrl(session.name), { ...options, userAgent: db.getUserAgent(settings) });
-    console.log(`[WebRTC] Session ${session.id.slice(0, 8)}: video ${options.videoMode}, deinterlace ${options.deinterlace}, at ${options.seek}s for: ${redactUrl(url)}`);
 
-    let closed = false, stderrTail = '';
+    let closed = false, ready = false;
     const send = (event) => { if (!closed) res.write(`data: ${JSON.stringify(event)}\n\n`); };
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-store');
@@ -108,29 +123,42 @@ router.get('/webrtc/session', async (req, res) => {
     };
     res.on('close', finish);
 
-    const ffmpeg = session.ffmpeg = spawn(ffmpegPath, args);
-    ffmpeg.stderr.on('data', (data) => {
-        const msg = data.toString();
-        stderrTail = (stderrTail + msg).slice(-2000);
-        if (/error/i.test(msg)) console.log(`[WebRTC FFmpeg] ${redactText(msg)}`);
-    });
-    ffmpeg.on('error', (error) => {
-        console.error('[WebRTC] Failed to spawn FFmpeg:', redactText(error.message));
-        send({ type: 'error', message: 'FFmpeg failed to start' });
-        finish();
-    });
-    ffmpeg.on('exit', (code, signal) => {
-        if (closed) return;
-        if (code === 0) send({ type: 'ended' });
-        else {
-            console.error(`[WebRTC] FFmpeg exited with ${signal || `code ${code}`}: ${redactText(stderrTail.trim().split('\n').pop() || '')}`);
-            send({ type: 'error', message: 'The stream stopped unexpectedly' });
-        }
-        finish();
-    });
+    const start = (encoder) => {
+        console.log(`[WebRTC] Session ${session.id.slice(0, 8)}: video ${options.videoMode}${options.videoMode === 'encode' ? ` via ${describeEncoder(encoder)}` : ''}, deinterlace ${options.deinterlace}, at ${options.seek}s for: ${redactUrl(url)}`);
+        const child = session.ffmpeg = spawn(ffmpegPath, buildWebrtcArgs(url, relay.rtspUrl(session.name), { ...options, userAgent, encoder }));
+        let stderrTail = '';
+        child.stderr.on('data', (data) => {
+            const msg = data.toString();
+            stderrTail = (stderrTail + msg).slice(-2000);
+            if (/error/i.test(msg)) console.log(`[WebRTC FFmpeg] ${redactText(msg)}`);
+        });
+        child.on('error', (error) => {
+            console.error('[WebRTC] Failed to spawn FFmpeg:', redactText(error.message));
+            send({ type: 'error', message: 'FFmpeg failed to start' });
+            finish();
+        });
+        child.on('exit', (code, signal) => {
+            if (closed || session.ffmpeg !== child) return;
+            const reason = redactText(stderrTail.trim().split('\n').pop() || '');
+            // The GPU failed before the stream went live: the browser is still waiting, so step down.
+            if (!ready && code !== 0 && encoder.kind !== 'software') {
+                const next = fallbackEncoder(encoder);
+                console.warn(`[WebRTC] ${describeEncoder(encoder)} failed (${reason || signal || `code ${code}`}), retrying with ${describeEncoder(next)}`);
+                return start(next);
+            }
+            if (code === 0) send({ type: 'ended' });
+            else {
+                console.error(`[WebRTC] FFmpeg exited with ${signal || `code ${code}`}: ${reason}`);
+                send({ type: 'error', message: 'The stream stopped unexpectedly' });
+            }
+            finish();
+        });
+    };
+    start(encoder);
 
     try {
-        await relay.waitForPath(session.name, () => closed || ffmpeg.exitCode !== null);
+        await relay.waitForPath(session.name, () => closed || session.ffmpeg.exitCode !== null);
+        ready = true;
         send({ type: 'ready', id: session.id });
     } catch (error) {
         if (!closed) {

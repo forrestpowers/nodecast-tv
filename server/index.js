@@ -245,6 +245,9 @@ const server = app.listen(PORT, async () => {
         try {
             const hwDetect = require('./services/hwDetect');
             await hwDetect.detect(app.locals.ffmpegPath || 'ffmpeg');
+            // Run canvas playback's one-time GPU test encode now rather than on the first stream.
+            const { resolveCanvasEncoder } = require('./services/canvasEncoder');
+            await resolveCanvasEncoder((await require('./db').settings.get()).hwEncoder, app.locals.ffmpegPath || 'ffmpeg');
         } catch (err) {
             console.warn('Hardware detection failed:', err.message);
         }
