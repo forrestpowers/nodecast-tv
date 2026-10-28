@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 240" width="500" height="240">
+  <defs>
+    <linearGradient id="card" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0d1222"/>
+      <stop offset="1" stop-color="#171d38"/>
+    </linearGradient>
+    <linearGradient id="hot" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ff2d55"/>
+      <stop offset="1" stop-color="#ff8a1f"/>
+    </linearGradient>
+    <linearGradient id="hotText" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#ff3d5a"/>
+      <stop offset="1" stop-color="#ff9a2e"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#ff4d4d" stop-opacity="0.45"/>
+      <stop offset="1" stop-color="#ff4d4d" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="shine" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.22"/>
+      <stop offset="0.55" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+
+  <!-- card -->
+  <rect x="1" y="1" width="498" height="238" rx="30" fill="url(#card)" stroke="#ffffff" stroke-opacity="0.08" stroke-width="2"/>
+  <circle cx="115" cy="120" r="120" fill="url(#glow)"/>
+
+  <!-- icon: a play button in motion -->
+  <rect x="40" y="45" width="150" height="150" rx="36" fill="url(#hot)"/>
+  <rect x="40" y="45" width="150" height="150" rx="36" fill="url(#shine)"/>
+  <g stroke="#ffffff" stroke-linecap="round" fill="none">
+    <line x1="60" y1="98" x2="84" y2="98" stroke-width="9" stroke-opacity="0.55"/>
+    <line x1="52" y1="120" x2="86" y2="120" stroke-width="9" stroke-opacity="0.85"/>
+    <line x1="60" y1="142" x2="84" y2="142" stroke-width="9" stroke-opacity="0.55"/>
+  </g>
+  <path d="M104 80 L166 120 L104 160 Z" fill="#ffffff" stroke="#ffffff" stroke-width="14" stroke-linejoin="round"/>
+
+  <!-- wordmark -->
+  <text x="222" y="92" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="15" font-weight="600" letter-spacing="3.5" fill="#6f7aa8">NODECAST-TV</text>
+  <text x="218" y="146" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="58" font-weight="800" letter-spacing="-1.5"><tspan fill="#ffffff">tes</tspan><tspan fill="url(#hotText)">player</tspan></text>
+  <text x="222" y="178" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="14" font-weight="600" letter-spacing="3" fill="#8b95c4">CANVAS · WEBRTC · GPU</text>
+</svg>
