@@ -183,6 +183,8 @@ app.get('/api/version', (req, res) => res.json({ version: require('../package.js
 app.use('/api', auth.requireSameOrigin);
 const authRoutes = require('./routes/auth');
 app.use('/api/auth', authRoutes);
+// The login page's joke "Bypass login" button: plays one fixed video, before (and without) auth.
+app.use('/api/bypass', require('./routes/bypass'));
 app.use('/api', auth.requireAuth);
 app.use('/api', (req, res, next) => {
     try {

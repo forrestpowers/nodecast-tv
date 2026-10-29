@@ -89,7 +89,7 @@ class WebRtcPipeline {
         if (this.destroyed) return;
         if (event.type === 'ready') {
             this.readyAt = performance.now();
-            this.connect(event.id).catch((error) => {
+            this.connect(event.id, event.whep).catch((error) => {
                 if (error.name !== 'AbortError') this.fail('webrtc-connect', error.message);
             });
         } else if (event.type === 'ended') {
@@ -99,7 +99,8 @@ class WebRtcPipeline {
         }
     }
 
-    async connect(id) {
+    /** @param whepUrl  where to send the offer; defaults to the canvas session endpoint */
+    async connect(id, whepUrl = `/api/canvas/webrtc/${encodeURIComponent(id)}/whep`) {
         const pc = this.pc = new RTCPeerConnection({ iceServers: [] });
         pc.addTransceiver('video', { direction: 'recvonly' });
         pc.addTransceiver('audio', { direction: 'recvonly' });
@@ -124,7 +125,7 @@ class WebRtcPipeline {
             pc.addEventListener('icegatheringstatechange', () => { if (pc.iceGatheringState === 'complete') resolve(); });
             setTimeout(resolve, WEBRTC_ICE_GATHER_MS);
         });
-        const res = await fetch(`/api/canvas/webrtc/${encodeURIComponent(id)}/whep`, {
+        const res = await fetch(whepUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'application/sdp' },
             body: pc.localDescription.sdp,

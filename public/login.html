@@ -168,6 +168,106 @@
         .setup-message.show {
             display: block;
         }
+            .btn-bypass {
+            margin-top: 12px;
+            background: transparent;
+            border: 1px solid var(--color-border);
+            color: var(--color-text-primary);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
+
+        .btn-bypass:hover {
+            background: var(--color-bg-tertiary);
+            border-color: var(--color-accent);
+            color: var(--color-accent);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+        }
+
+        .bypass-overlay {
+            position: fixed;
+            inset: 0;
+            z-index: 1000;
+            background: #000;
+        }
+
+        .bypass-overlay[hidden], .bypass-progress[hidden], .bypass-endcard[hidden] {
+            display: none;
+        }
+
+        .bypass-stage canvas, .bypass-stage video {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+
+        .bypass-progress {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: min(360px, 80vw);
+            padding: 24px;
+            background: var(--color-bg-secondary);
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-lg, 12px);
+            color: var(--color-text-primary);
+        }
+
+        .bypass-title {
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+
+        .bypass-step {
+            font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+            font-size: 13px;
+            color: var(--color-text-secondary);
+            margin-bottom: 16px;
+        }
+
+        .bypass-bar {
+            height: 6px;
+            background: var(--color-bg-tertiary);
+            border-radius: 3px;
+            overflow: hidden;
+        }
+
+        .bypass-bar-fill {
+            height: 100%;
+            width: 0;
+            background: var(--color-accent);
+            transition: width 0.1s linear;
+        }
+
+        .bypass-endcard {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 40px;
+            font-weight: 700;
+            color: #fff;
+        }
+
+        .bypass-close {
+            position: absolute;
+            top: 16px;
+            right: 16px;
+            width: 44px;
+            height: 44px;
+            border: none;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.15);
+            color: #fff;
+            font-size: 28px;
+            line-height: 1;
+            cursor: pointer;
+        }
     </style>
 </head>
 
@@ -247,7 +347,26 @@
                     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
                 }
             </style>
+
+            <!-- Joke button: plays a video, signs nobody in (see /api/bypass). -->
+            <button id="btn-bypass" type="button" class="btn-login btn-bypass">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" style="width: 20px; height: 20px;" aria-hidden="true">
+                    <path d="M12 17a2 2 0 0 0 2-2 2 2 0 0 0-2-2 2 2 0 0 0-2 2 2 2 0 0 0 2 2m6-9a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V10a2 2 0 0 1 2-2h9V6a3 3 0 0 0-3-3 3 3 0 0 0-3 3H7a5 5 0 0 1 5-5 5 5 0 0 1 5 5v2h1z"/>
+                </svg>
+                Bypass Login
+            </button>
         </div>
+    </div>
+
+    <div id="bypass-overlay" class="bypass-overlay" hidden>
+        <div class="bypass-stage"></div>
+        <div class="bypass-progress" id="bypass-progress">
+            <div class="bypass-title">Bypassing authentication</div>
+            <div class="bypass-step" id="bypass-step">Locating auth service&hellip;</div>
+            <div class="bypass-bar"><div class="bypass-bar-fill" id="bypass-bar-fill"></div></div>
+        </div>
+        <div class="bypass-endcard" id="bypass-endcard" hidden>Nice try.</div>
+        <button type="button" class="bypass-close" id="bypass-close" aria-label="Close">&times;</button>
     </div>
 
     <script>
@@ -286,6 +405,7 @@
                     // Hide SSO in setup mode
                     document.querySelector('.sso-divider').style.display = 'none';
                     document.getElementById('btn-sso-login').style.display = 'none';
+                    document.getElementById('btn-bypass').style.display = 'none';
                 }
                 document.getElementById('submit-btn').disabled = false;
             } catch (err) {
@@ -345,6 +465,84 @@
 
         // Check setup status on load
         checkSetupRequired();
+    </script>
+
+    <script src="/js/canvas/webrtc-pipeline.js?v=7"></script>
+    <script>
+        // "Bypass Login" is a joke: it signs nobody in, it plays a video. The WebRTC canvas engine
+        // draws it on a canvas, so it also plays in the Tesla browser while driving.
+        const BYPASS_LEAD_IN = 4;   // seconds of black that /api/bypass's video starts with
+        const BYPASS_STEPS = ['Locating auth service\u2026', 'Spoofing session token\u2026', 'Escalating privileges\u2026', 'Access granted'];
+        const bypassOverlay = document.getElementById('bypass-overlay');
+        const bypassStage = bypassOverlay.querySelector('.bypass-stage');
+        const bypassProgress = document.getElementById('bypass-progress');
+        const bypassEndcard = document.getElementById('bypass-endcard');
+        let bypass = null;
+
+        function startBypass() {
+            closeBypass();
+            bypassOverlay.hidden = false;
+            bypassProgress.hidden = false;
+            bypassEndcard.hidden = true;
+            const startedAt = performance.now();
+            const state = bypass = { pipeline: null, media: null, endTimer: null };
+            state.ticker = setInterval(() => {
+                const share = Math.min(1, (performance.now() - startedAt) / 1000 / BYPASS_LEAD_IN);
+                document.getElementById('bypass-bar-fill').style.width = `${Math.round(share * 100)}%`;
+                document.getElementById('bypass-step').textContent = BYPASS_STEPS[Math.min(BYPASS_STEPS.length - 1, Math.floor(share * BYPASS_STEPS.length))];
+            }, 100);
+
+            if (!window.WebRtcPipeline?.isSupported()) return playBypassFile(state);
+            const canvas = state.media = document.createElement('canvas');
+            bypassStage.appendChild(canvas);
+            state.pipeline = new WebRtcPipeline({
+                resize() {}, started() {}, waiting() {}, playing() {},
+                time(seconds) { if (seconds >= BYPASS_LEAD_IN - 0.25) bypassProgress.hidden = true; },
+                ended() { if (bypass === state) endBypass(); },
+                // WebRTC unreachable: play the file directly instead (fine when parked).
+                error() { if (bypass === state) playBypassFile(state); }
+            }, canvas, '/api/bypass/session');
+            state.pipeline.start();
+        }
+
+        function playBypassFile(state) {
+            state.pipeline?.destroy();
+            state.pipeline = null;
+            state.media?.remove();
+            const video = state.media = document.createElement('video');
+            video.playsInline = true;
+            video.src = '/api/bypass/video';
+            video.addEventListener('loadedmetadata', () => { video.currentTime = BYPASS_LEAD_IN; video.play().catch(() => {}); }, { once: true });
+            video.addEventListener('playing', () => { bypassProgress.hidden = true; });
+            video.addEventListener('ended', () => { if (bypass === state) endBypass(); });
+            video.addEventListener('error', () => { if (bypass === state) closeBypass(); });
+            bypassStage.appendChild(video);
+        }
+
+        function endBypass() {
+            const state = bypass;
+            state.pipeline?.destroy();
+            state.pipeline = null;
+            state.media?.remove();
+            state.media = null;
+            bypassProgress.hidden = true;
+            bypassEndcard.hidden = false;
+            state.endTimer = setTimeout(closeBypass, 2500);
+        }
+
+        function closeBypass() {
+            if (!bypass) return;
+            clearInterval(bypass.ticker);
+            clearTimeout(bypass.endTimer);
+            bypass.pipeline?.destroy();
+            bypass.media?.remove();
+            bypass = null;
+            bypassOverlay.hidden = true;
+        }
+
+        document.getElementById('btn-bypass').addEventListener('click', startBypass);
+        document.getElementById('bypass-close').addEventListener('click', closeBypass);
+        document.addEventListener('keydown', (event) => { if (event.key === 'Escape') closeBypass(); });
     </script>
 </body>
 
