@@ -3,10 +3,11 @@
  *
  * /api/canvas/webrtc/session starts the server side (ffmpeg -> MediaMTX) and stays open as a
  * Server-Sent Events stream for the session's lifetime. Once it reports ready, the page sends a
- * WHEP offer, receives H.264 + Opus over WebRTC, pulls decoded video frames off the track with
- * MediaStreamTrackProcessor and draws them on the canvas. Sound plays through an <audio>
- * element, which browsers that suspend <video> leave running. WebRTC's own jitter buffer keeps
- * the two in sync, so frames are drawn as they arrive.
+ * WHEP offer, receives H.264 + Opus over WebRTC and pulls decoded video frames off the track with
+ * MediaStreamTrackProcessor. webrtc-render-worker.js draws them on the canvas (as an
+ * OffscreenCanvas) once per display refresh, off the main thread; browsers that can't transfer
+ * the canvas draw here instead. Sound plays through an <audio> element, which browsers that
+ * suspend <video> leave running. WebRTC's own jitter buffer keeps the two in sync.
  *
  * Host callbacks: resize, started, time, waiting, playing, ended, error(code, message)
  */
@@ -30,7 +31,9 @@ class WebRtcPipeline {
         this.url = url;
         this.live = new URL(url, window.location.href).searchParams.get('live') === '1';
         this.restartOnResume = false;
-        this.ctx = canvas.getContext('2d');
+        this.ctx = null;            // main-thread drawing only; the worker path transfers the canvas instead
+        this.renderWorker = null;
+        this.renderStats = { drawn: 0, superseded: 0, maxGapMs: 0 };
         this.paused = false;
         this.destroyed = false;
         this.serverEnded = false;
@@ -136,33 +139,86 @@ class WebRtcPipeline {
         }, WEBRTC_CONNECT_MS);
     }
 
-    async readVideo(track) {
-        const reader = this.videoReader = new MediaStreamTrackProcessor({ track }).readable.getReader();
+    readVideo(track) {
+        const readable = new MediaStreamTrackProcessor({ track }).readable;
+        if (!this.startRenderWorker(readable)) this.drawOnMainThread(readable);
+    }
+
+    /** Hand the canvas and the frames to webrtc-render-worker.js; false when this browser can't. */
+    startRenderWorker(readable) {
+        if (typeof Worker !== 'function' || typeof this.canvas.transferControlToOffscreen !== 'function') return false;
+        let offscreen;
+        try { offscreen = this.canvas.transferControlToOffscreen(); } catch (_) { return false; }
+
+        const worker = this.renderWorker = new Worker('/js/canvas/webrtc-render-worker.js?v=2');
+        worker.onmessage = (event) => this.onWorkerMessage(event.data);
+        worker.onerror = (event) => this.fail('webrtc-stream', event.message || 'Video render worker failed');
+        worker.postMessage({ t: 'init', canvas: offscreen, paused: this.paused }, [offscreen]);
+        try {
+            worker.postMessage({ t: 'stream', stream: readable }, [readable]);
+        } catch (_) {
+            // No transferable streams: read here and pass each frame across (VideoFrame transfers cheaply).
+            this.forEachFrame(readable, (frame) => worker.postMessage({ t: 'frame', frame }, [frame]));
+        }
+        return true;
+    }
+
+    onWorkerMessage(message) {
+        if (this.destroyed) return;
+        if (message.t === 'first') {
+            this.host.resize(message.width, message.height);
+            this.onFrame(message.timestamp);
+        } else if (message.t === 'progress') {
+            this.renderStats = { drawn: message.drawn, superseded: message.superseded, maxGapMs: message.maxGapMs };
+            this.onFrame(message.timestamp);
+        } else if (message.t === 'resize') {
+            this.host.resize(message.width, message.height);
+        } else if (message.t === 'error') {
+            this.fail('webrtc-stream', message.message);
+        }
+    }
+
+    /** Fallback without OffscreenCanvas transfer: draw each frame as it arrives. */
+    drawOnMainThread(readable) {
+        this.ctx = this.canvas.getContext('2d');
+        this.forEachFrame(readable, (frame) => {
+            try {
+                if (!this.paused) {
+                    const width = frame.displayWidth, height = frame.displayHeight;
+                    if (this.canvas.width !== width || this.canvas.height !== height) {
+                        this.canvas.width = width;
+                        this.canvas.height = height;
+                        this.host.resize(width, height);
+                    }
+                    this.ctx.drawImage(frame, 0, 0, width, height);
+                }
+                this.onFrame(frame.timestamp);
+            } finally {
+                frame.close();
+            }
+        });
+    }
+
+    async forEachFrame(readable, handle) {
+        const reader = this.videoReader = readable.getReader();
         try {
             for (;;) {
                 const { value: frame, done } = await reader.read();
                 if (done || this.destroyed) { frame?.close(); return; }
-                try { this.present(frame); } finally { frame.close(); }
+                handle(frame);
             }
         } catch (error) {
             if (!this.destroyed) this.fail('webrtc-stream', `Video track failed: ${error.message}`);
         }
     }
 
-    present(frame) {
+    /** Playback bookkeeping for a frame (timestamp in µs) that arrived; drawing happens elsewhere. */
+    onFrame(timestamp) {
         const now = performance.now();
         this.lastFrameAt = now;
         if (this.paused) return;
-        const width = frame.displayWidth, height = frame.displayHeight;
-        if (this.canvas.width !== width || this.canvas.height !== height) {
-            this.canvas.width = width;
-            this.canvas.height = height;
-            this.host.resize(width, height);
-        }
-        this.ctx.drawImage(frame, 0, 0, width, height);
-
         if (this.firstTimestamp === null) {
-            this.firstTimestamp = frame.timestamp;
+            this.firstTimestamp = timestamp;
             // The server publishes in real time from the moment the stream is ready; negotiating
             // and waiting for a keyframe took this long, so that much of the stream went by unseen.
             this.joinOffset = this.readyAt ? (now - this.readyAt) / 1000 : 0;
@@ -178,7 +234,7 @@ class WebRtcPipeline {
         }
         if (now - this.lastTimeAt >= WEBRTC_TIME_INTERVAL_MS) {
             this.lastTimeAt = now;
-            this.host.time(this.joinOffset + Math.max(0, (frame.timestamp - this.firstTimestamp) / 1e6));
+            this.host.time(this.joinOffset + Math.max(0, (timestamp - this.firstTimestamp) / 1e6));
         }
     }
 
@@ -207,6 +263,7 @@ class WebRtcPipeline {
     pause() {
         this.paused = true;
         this.audio.pause();
+        this.renderWorker?.postMessage({ t: 'pause' });
         if (!this.live && !this.restartOnResume) {
             this.restartOnResume = true;
             this.release();
@@ -215,6 +272,7 @@ class WebRtcPipeline {
 
     resume() {
         this.paused = false;
+        this.renderWorker?.postMessage({ t: 'resume' });
         this.lastFrameAt = performance.now();
         this.audio.play().catch(() => {});
     }
@@ -235,7 +293,7 @@ class WebRtcPipeline {
         this.host.error(code, message);
     }
 
-    /** Stop the session and connection but leave the last frame on the canvas. */
+    /** Stop the session and connection but leave the last frame on the canvas (the worker keeps it). */
     release() {
         this.destroyed = true;
         clearInterval(this.watchdog);
@@ -243,6 +301,7 @@ class WebRtcPipeline {
         clearTimeout(this.firstFrameTimer);
         this.abort?.abort();
         this.videoReader?.cancel().catch(() => {});
+        this.renderWorker?.postMessage({ t: 'stop' });
         this.pc?.close();
     }
 
@@ -253,6 +312,8 @@ class WebRtcPipeline {
         clearTimeout(this.firstFrameTimer);
         this.abort?.abort();
         this.videoReader?.cancel().catch(() => {});
+        this.renderWorker?.terminate();
+        this.renderWorker = null;
         this.pc?.close();
         this.audio.pause();
         this.audio.srcObject = null;
