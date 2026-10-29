@@ -190,14 +190,26 @@ h4 {
   fill: var(--color-accent);
 }
 
+/* The tesplayer play tile carries its own colours */
+.logo .brand-icon {
+  fill: none;
+}
+
 .brand-text {
-  font-family: 'Century Gothic', sans-serif;
+  font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
   font-size: 1.5rem;
-  font-weight: 500;
+  font-weight: 800;
   letter-spacing: -0.03em;
   color: #fff;
   /* Visual correction: shift text slightly down to align optically with icon center */
   padding-top: 2px;
+}
+
+.brand-player {
+  background: linear-gradient(90deg, #ff3d5a, #ff9a2e);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
 }
 
 .brand-accent {

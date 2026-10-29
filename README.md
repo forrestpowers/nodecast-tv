@@ -1,5 +1,9 @@
 <p align="center">
-  <img src="public/img/logo-banner.png" alt="nodecast-tv" height="60" />
+  <img src="public/img/tesplayer-logo.png" alt="tesplayer" width="250" />
+</p>
+
+<p align="center">
+  <b>tesplayer</b> is a fork of <a href="https://github.com/technomancer702/nodecast-tv">nodecast-tv</a> that keeps playing in the Tesla browser while driving (passengers only): <a href="#canvas-playback-tesla-and-other-browsers-that-pause-video">canvas playback</a> over WebCodecs or WebRTC, encoded on the GPU.
 </p>
 
 # What is nodecast-tv?
