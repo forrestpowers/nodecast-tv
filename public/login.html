@@ -10,9 +10,18 @@
     <link rel="stylesheet" href="css/main.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
+        /* main.css locks html/body for the app shell; this page must scroll on short screens (Tesla). */
+        html {
+            height: auto;
+            overflow-y: auto;
+        }
+
         body {
             margin: 0;
             padding: 0;
+            height: auto;
+            min-height: 100%;
+            overflow: visible;
             background: var(--color-bg-primary);
             font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
         }
@@ -24,6 +33,7 @@
             justify-content: center;
             min-height: 100vh;
             padding: 20px;
+            box-sizing: border-box;
         }
 
         .login-box {
@@ -267,6 +277,59 @@
             font-size: 28px;
             line-height: 1;
             cursor: pointer;
+        }
+
+        /* Short screens (the Tesla browser is about 1254x650): tighten so everything fits. */
+        @media (max-height: 820px) {
+            .login-container {
+                padding: 12px;
+            }
+
+            .login-box {
+                padding: 20px 28px;
+            }
+
+            .login-logo {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                gap: 12px;
+                margin-bottom: 16px;
+            }
+
+            .login-logo .logo-icon {
+                width: 40px;
+                height: 40px;
+                margin: 0;
+            }
+
+            .login-logo p {
+                display: none;
+            }
+
+            .form-group {
+                margin-bottom: 12px;
+            }
+
+            .form-group label {
+                margin-bottom: 4px;
+            }
+
+            .form-group input {
+                padding: 10px 14px;
+            }
+
+            .btn-login {
+                padding: 11px;
+            }
+
+            .sso-divider {
+                margin: 12px 0 !important;
+            }
+
+            .btn-bypass {
+                margin-top: 8px;
+            }
         }
     </style>
 </head>
