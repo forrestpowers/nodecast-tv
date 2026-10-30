@@ -10,6 +10,7 @@ router.use((req, res, next) => {
 });
 const { sources } = require('../db');
 const sourceAccess = require('../services/sourceAccess');
+const { toLiveStream } = require('../services/channelFields');
 
 // Each login only reaches the sources it may use (see services/sourceAccess).
 router.param('sourceId', sourceAccess.sourceParam);
@@ -67,6 +68,7 @@ function getStreamsFromDb(sourceId, type, categoryId = null, includeHidden = fal
     // query += ` ORDER BY name ASC`; // Sorting usually handled by client
 
     const items = db.prepare(query).all(...params);
+    if (type === 'live') return items.map(toLiveStream);
 
     // Map to Xtream format
     return items.map(item => {

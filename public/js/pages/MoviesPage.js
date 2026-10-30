@@ -18,6 +18,8 @@ class MoviesPage {
         this.batchSize = 24;
         this.filteredMovies = [];
         this.isLoading = false;
+        this.loadGeneration = 0;
+        this.savedPosition = null;
         this.observer = null;
         this.favoriteIds = new Set(); // Track favorite movie IDs
         this.showFavoritesOnly = false;
@@ -69,15 +71,33 @@ class MoviesPage {
         // Load favorites
         await this.loadFavorites();
 
-        // Load movies if empty
+        // Load movies if empty, back to the same filters and place
         if (this.movies.length === 0) {
+            const category = this.categorySelect.value;
             await this.loadCategories();
+            this.categorySelect.value = category;
             await this.loadMovies();
+            this.restorePosition();
         }
     }
 
+    /** Free the catalogue and its posters: they matter most while something is playing. */
     hide() {
-        // Page is hidden
+        if (this.movies.length > 0) this.savedPosition = { batches: this.currentBatch, scrollTop: this.container.scrollTop };
+        this.loadGeneration++;
+        this.isLoading = false;
+        this.observer.disconnect();
+        this.movies = [];
+        this.filteredMovies = [];
+        this.container.innerHTML = '';
+    }
+
+    restorePosition() {
+        const saved = this.savedPosition;
+        this.savedPosition = null;
+        if (!saved || this.movies.length === 0) return;
+        while (this.currentBatch < saved.batches && this.currentBatch * this.batchSize < this.filteredMovies.length) this.renderNextBatch();
+        this.container.scrollTop = saved.scrollTop;
     }
 
     async loadFavorites() {
@@ -161,6 +181,7 @@ class MoviesPage {
     }
 
     async loadMovies() {
+        const generation = ++this.loadGeneration;
         this.isLoading = true;
         this.container.innerHTML = '<div class="loading"><div class="loading-spinner"></div></div>';
 
@@ -188,6 +209,7 @@ class MoviesPage {
                     }
 
                     const movies = await API.proxy.xtream.vodStreams(source.id, catId);
+                    if (generation !== this.loadGeneration) return;
                     console.log(`[Movies] Source ${source.id}, Category ${catId || 'ALL'}: Got ${movies?.length || 0} movies`);
                     if (movies && Array.isArray(movies)) {
                         movies.forEach(m => {
@@ -207,13 +229,14 @@ class MoviesPage {
                 }
             }
 
+            if (generation !== this.loadGeneration) return; // Left the page or changed the filters meanwhile
             console.log(`[Movies] Total loaded: ${this.movies.length} movies`);
             this.filterAndRender();
         } catch (err) {
             console.error('Error loading movies:', err);
             this.container.innerHTML = '<div class="empty-state"><p>Error loading movies</p></div>';
         } finally {
-            this.isLoading = false;
+            if (generation === this.loadGeneration) this.isLoading = false;
         }
     }
 

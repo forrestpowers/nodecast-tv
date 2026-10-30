@@ -20,6 +20,8 @@ class SeriesPage {
         this.batchSize = 24;
         this.filteredSeries = [];
         this.isLoading = false;
+        this.loadGeneration = 0;
+        this.savedPosition = null;
         this.observer = null;
         this.hiddenCategoryIds = new Set();
         this.currentSeries = null;
@@ -82,15 +84,33 @@ class SeriesPage {
         // Load favorites
         await this.loadFavorites();
 
-        // Load series if empty
+        // Load series if empty, back to the same filters and place
         if (this.seriesList.length === 0) {
+            const category = this.categorySelect.value;
             await this.loadCategories();
+            this.categorySelect.value = category;
             await this.loadSeries();
+            this.restorePosition();
         }
     }
 
+    /** Free the catalogue and its posters: they matter most while something is playing. */
     hide() {
-        // Page is hidden
+        if (this.seriesList.length > 0) this.savedPosition = { batches: this.currentBatch, scrollTop: this.container.scrollTop };
+        this.loadGeneration++;
+        this.isLoading = false;
+        this.observer.disconnect();
+        this.seriesList = [];
+        this.filteredSeries = [];
+        this.container.innerHTML = '';
+    }
+
+    restorePosition() {
+        const saved = this.savedPosition;
+        this.savedPosition = null;
+        if (!saved || this.seriesList.length === 0) return;
+        while (this.currentBatch < saved.batches && this.currentBatch * this.batchSize < this.filteredSeries.length) this.renderNextBatch();
+        this.container.scrollTop = saved.scrollTop;
     }
 
     async loadFavorites() {
@@ -173,6 +193,7 @@ class SeriesPage {
     }
 
     async loadSeries() {
+        const generation = ++this.loadGeneration;
         this.isLoading = true;
         this.container.innerHTML = '<div class="loading"><div class="loading-spinner"></div></div>';
 
@@ -200,6 +221,7 @@ class SeriesPage {
                     }
 
                     const series = await API.proxy.xtream.series(source.id, catId);
+                    if (generation !== this.loadGeneration) return;
                     console.log(`[Series] Source ${source.id}, Category ${catId || 'ALL'}: Got ${series?.length || 0} series`);
                     if (series && Array.isArray(series)) {
                         series.forEach(s => {
@@ -219,13 +241,14 @@ class SeriesPage {
                 }
             }
 
+            if (generation !== this.loadGeneration) return; // Left the page or changed the filters meanwhile
             console.log(`[Series] Total loaded: ${this.seriesList.length} series`);
             this.filterAndRender();
         } catch (err) {
             console.error('Error loading series:', err);
             this.container.innerHTML = '<div class="empty-state"><p>Error loading series</p></div>';
         } finally {
-            this.isLoading = false;
+            if (generation === this.loadGeneration) this.isLoading = false;
         }
     }
 

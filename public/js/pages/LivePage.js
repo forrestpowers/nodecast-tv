@@ -8,12 +8,16 @@ class LivePage {
         this.handleKeydown = this.handleKeydown.bind(this);
     }
 
-    async init() {
-        // Load sources and channels on initial page load
-        await this.app.channelList.loadSources();
-        await this.app.channelList.loadChannels();
+    /** Fetch the channel list, which Home leaves to this page. */
+    loadChannels() {
+        const channelList = this.app.channelList;
+        return this.channelsLoad ||= channelList.loadSources()
+            .then(() => channelList.loadChannels())
+            .finally(() => { this.channelsLoad = null; });
+    }
 
-        // Silently fetch EPG data for sidebar info
+    /** Silently fetch EPG data for sidebar info */
+    async loadProgramInfo() {
         try {
             await this.app.epgGuide.loadNowPlaying();
 
@@ -95,10 +99,9 @@ class LivePage {
         document.addEventListener('keydown', this.handleKeydown);
 
         // Only reload if channels aren't already loaded
-        if (this.app.channelList.channels.length === 0) {
-            await this.app.channelList.loadSources();
-            await this.app.channelList.loadChannels();
-        }
+        this.ready = this.app.channelList.channels.length === 0 ? this.loadChannels() : Promise.resolve();
+        await this.ready;
+        await this.loadProgramInfo();
     }
 
     hide() {

@@ -124,38 +124,10 @@ class HomePage {
         if (!list || !section) return;
 
         try {
-            // Fetch favorite channels for current user
-            const favorites = await window.API.request('GET', '/favorites?itemType=channel');
+            // The server resolves favorites, so Home never loads the whole channel list
+            const channels = await window.API.request('GET', '/favorites/channels');
 
-            if (!favorites || favorites.length === 0) {
-                list.innerHTML = '<div class="empty-state hint">Add channels to favorites from Live TV</div>';
-                return;
-            }
-
-            // Ensure channel list is loaded to resolve channel details
-            const channelList = this.app.channelList;
-            if (!channelList.channels || channelList.channels.length === 0) {
-                await channelList.loadSources();
-                await channelList.loadChannels();
-            }
-
-            // Match favorites to channel data
-            const channelIndex = new Map();
-            for (const ch of channelList.channels) {
-                channelIndex.set(`${ch.sourceId}:${ch.id}`, ch);
-                channelIndex.set(`${ch.sourceId}:${ch.streamId}`, ch);
-            }
-
-            const channels = [];
-            for (const fav of favorites) {
-                // Find channel in loaded channel list
-                const channel = channelIndex.get(`${fav.source_id}:${fav.item_id}`);
-                if (channel) {
-                    channels.push({ ...channel, favoriteId: fav.id });
-                }
-            }
-
-            if (channels.length === 0) {
+            if (!channels || channels.length === 0) {
                 list.innerHTML = '<div class="empty-state hint">Add channels to favorites from Live TV</div>';
                 return;
             }
@@ -165,11 +137,7 @@ class HomePage {
 
             // Attach click handlers
             list.querySelectorAll('.channel-tile').forEach(tile => {
-                tile.addEventListener('click', () => {
-                    const channelId = tile.dataset.channelId;
-                    const sourceId = tile.dataset.sourceId;
-                    this.playChannel(channelId, sourceId);
-                });
+                tile.addEventListener('click', () => this.playChannel(tile.dataset.channelId));
             });
 
             // Update scroll arrows after content renders
@@ -196,29 +164,11 @@ class HomePage {
         `;
     }
 
-    playChannel(channelId, sourceId) {
-        // Navigate to Live TV and select the channel
+    async playChannel(channelId) {
+        // Live TV holds the player and the channel list, which starts loading now
         this.app.navigateTo('live');
-
-        // Small delay to ensure page is ready
-        setTimeout(() => {
-            const channelList = this.app.channelList;
-            if (channelList) {
-                // Find and select the channel
-                const channel = channelList.channels.find(ch =>
-                    String(ch.id) === String(channelId) && String(ch.sourceId) === String(sourceId)
-                );
-                if (channel) {
-                    channelList.selectChannel({
-                        channelId: channel.id,
-                        sourceId: channel.sourceId,
-                        sourceType: channel.sourceType,
-                        streamId: channel.streamId || '',
-                        url: channel.url || ''
-                    });
-                }
-            }
-        }, 100);
+        await this.app.pages.live.ready;
+        await this.app.channelList.selectChannel({ channelId });
     }
 }
 

@@ -150,12 +150,6 @@ class App {
         // Initialize home page first (it's needed for channel list)
         await this.pages.home.init();
 
-        // Preload what is on now in the background (non-blocking)
-        // This ensures EPG info is available on Live TV page without visiting Guide first
-        this.epgGuide.loadNowPlaying().catch(err => {
-            console.warn('Background EPG load failed:', err.message);
-        });
-
         // Navigate to the page from URL hash, or default to home
         const hash = window.location.hash.slice(1); // Remove #
         const initialPage = hash && this.pages[hash] ? hash : 'home';
@@ -252,15 +246,15 @@ class App {
             link.classList.toggle('active', link.dataset.page === pageName);
         });
 
+        // Notify page controllers while the old page is still on screen (it may save its scroll position)
+        if (this.pages[this.currentPage]?.hide) {
+            this.pages[this.currentPage].hide();
+        }
+
         // Update pages
         document.querySelectorAll('.page').forEach(page => {
             page.classList.toggle('active', page.id === `page-${pageName}`);
         });
-
-        // Notify page controllers
-        if (this.pages[this.currentPage]?.hide) {
-            this.pages[this.currentPage].hide();
-        }
 
         this.currentPage = pageName;
 
