@@ -137,6 +137,8 @@ test('viewers manage their own services, admins manage everything, shared source
     const own = await request('/api/sources', { headers: alice.headers, body: { type: 'xtream', name: 'Alice IPTV', url, username: 'a', password: 'secret', allowedUsers: [] } });
     assert.equal(own.status, 201);
     assert.deepEqual(own.body.allowedUsers, [alice.id]);
+    const second = await request('/api/sources', { headers: alice.headers, body: { type: 'xtream', name: 'Another', url, username: 'a', password: 'secret' } });
+    assert.equal(second.status, 409, 'one provider per login');
     assert.equal((await request(`/api/sources/${own.body.id}`, { headers: bob.headers })).status, 404);
     const [listed] = (await request('/api/sources', { headers: alice.headers })).body;
     assert.equal(listed.canManage, true);

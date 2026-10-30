@@ -1217,7 +1217,8 @@ class WatchPage {
         }
 
         try {
-            const movies = await API.proxy.xtream.vodStreams(sourceId, categoryId);
+            // One extra, as the movie playing may be among them
+            const movies = await API.proxy.xtream.vodStreams(sourceId, categoryId, { limit: 13 });
             if (!movies || movies.length === 0) {
                 this.recommendedSection?.classList.add('hidden');
                 return;
@@ -1228,6 +1229,7 @@ class WatchPage {
                 .filter(m => m.stream_id !== this.content?.id)
                 .slice(0, 12);
 
+            this.recommendedMovies = filtered;
             this.renderRecommendedGrid(filtered, sourceId);
         } catch (e) {
             console.error('Error loading recommended:', e);
@@ -1255,9 +1257,8 @@ class WatchPage {
 
     async playRecommendedMovie(streamId, sourceId) {
         try {
-            // Fetch movie details
-            const movies = await API.proxy.xtream.vodStreams(sourceId);
-            const movie = movies?.find(m => m.stream_id == streamId);
+            // The grid already holds its movies' details: never fetch the whole catalogue for one
+            const movie = this.recommendedMovies?.find(m => m.stream_id == streamId);
 
             if (!movie) return;
 

@@ -47,7 +47,7 @@ function getCategoriesFromDb(sourceId, type, includeHidden = false) {
 }
 
 // Helper to get formatted streams from DB
-function getStreamsFromDb(sourceId, type, categoryId = null, includeHidden = false) {
+function getStreamsFromDb(sourceId, type, categoryId = null, includeHidden = false, limit = null) {
     const db = getDb();
     let query = `
         SELECT item_id, name, stream_icon, added_at, rating, container_extension, year, category_id, data
@@ -66,6 +66,11 @@ function getStreamsFromDb(sourceId, type, categoryId = null, includeHidden = fal
 
     // Default sorting
     // query += ` ORDER BY name ASC`; // Sorting usually handled by client
+
+    if (limit) {
+        query += ` LIMIT ?`;
+        params.push(limit);
+    }
 
     const items = db.prepare(query).all(...params);
     if (type === 'live') return items.map(toLiveStream);
@@ -161,7 +166,8 @@ router.get('/xtream/:sourceId/vod_streams', async (req, res) => {
         const sourceId = parseInt(req.params.sourceId);
         const categoryId = req.query.category_id;
         const includeHidden = req.query.includeHidden === 'true';
-        const streams = getStreamsFromDb(sourceId, 'movie', categoryId, includeHidden);
+        const limit = Number.parseInt(req.query.limit, 10);
+        const streams = getStreamsFromDb(sourceId, 'movie', categoryId, includeHidden, limit > 0 ? limit : null);
         res.json(streams);
     } catch (err) {
         console.error(err);

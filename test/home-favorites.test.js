@@ -101,3 +101,27 @@ test('Home gets favorites without the channel list', async (t) => {
     assert.deepEqual(await names(), []);
     assert.ok(three, 'the rest of the list was never needed');
 });
+
+test('the Watch page can ask for a few movies instead of a whole category', async (t) => {
+    const movies = Array.from({ length: 30 }, (_, i) => ({ name: `Movie ${i + 1}`, stream_id: 1000 + i, category_id: '7', container_extension: 'mp4' }));
+    const answers = { get_vod_categories: [{ category_id: '7', category_name: 'Films' }], get_vod_streams: movies };
+    const provider = http.createServer((req, res) => {
+        const action = new URL(req.url, 'http://x').searchParams.get('action');
+        res.setHeader('Content-Type', 'application/json');
+        res.end(JSON.stringify(action ? answers[action] ?? [] : { user_info: { auth: 1 } }));
+    });
+    await new Promise((resolve) => provider.listen(0, '127.0.0.1', resolve));
+    t.after(() => { provider.closeAllConnections(); return new Promise((resolve) => provider.close(resolve)); });
+
+    const request = await startApp(t);
+    const setup = await request('/api/auth/setup', { body: { username: 'Admin', password: 'password123' } });
+    const headers = { Cookie: setup.cookie.split(';')[0] };
+    const source = (await request('/api/sources', { headers, body: { type: 'xtream', name: 'Films', url: `http://127.0.0.1:${provider.address().port}`, username: 'u', password: 'p' } })).body;
+
+    const count = async (query) => (await request(`/api/proxy/xtream/${source.id}/vod_streams${query}`, { headers })).body.length;
+    for (let attempt = 0; attempt < 100 && await count('') < 30; attempt++) await new Promise((resolve) => setTimeout(resolve, 50));
+    assert.equal(await count(''), 30);
+    assert.equal(await count('?category_id=7&limit=13'), 13);
+    assert.equal(await count('?limit=nonsense'), 30);
+    assert.equal(await count('?limit=-1'), 30);
+});

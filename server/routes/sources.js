@@ -84,6 +84,12 @@ router.post('/', async (req, res) => {
             return res.status(400).json({ error: 'Invalid source type' });
         }
 
+        // A login has one provider
+        if (req.user.role !== 'admin' && type === 'xtream') {
+            const hasOwn = (await sources.getAll()).some(s => s.type === 'xtream' && sourceAccess.canManageSource(req.user, s));
+            if (hasOwn) return res.status(409).json({ error: 'This login already has an IPTV provider' });
+        }
+
         // A viewer's own service belongs to that viewer; only admins choose who else gets a source
         const access = req.user.role === 'admin' ? sourceAccess.parseAllowedUsers(allowedUsers) : [req.user.id];
         const source = await sources.create({ type, name, url, username, password, zapBeforeStreaming: zapBeforeStreaming === true, zapDelay: zapDelayValue(zapDelay), allowedUsers: access });

@@ -114,6 +114,7 @@ const API = {
                 const params = [];
                 if (categoryId) params.push(`category_id=${categoryId}`);
                 if (options.includeHidden) params.push('includeHidden=true');
+                if (options.limit) params.push(`limit=${options.limit}`);
                 const query = params.length ? `?${params.join('&')}` : '';
                 return API.request('GET', `/proxy/xtream/${sourceId}/vod_streams${query}`);
             },

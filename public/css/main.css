@@ -545,6 +545,7 @@ h4 {
 .sidebar-controls {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
   gap: var(--space-sm);
   margin-top: var(--space-sm);
 }
@@ -1356,6 +1357,11 @@ body:not(.is-admin) [data-admin-only] {
   color: var(--color-text-muted);
   font-weight: 500;
   white-space: nowrap;
+}
+
+.source-select[hidden],
+.btn[hidden] {
+  display: none;
 }
 
 .source-access {

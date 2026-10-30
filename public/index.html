@@ -11,7 +11,7 @@
   <meta name="description" content="Stream live TV, movies, and series with EPG support">
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
   <link rel="apple-touch-icon" href="/img/tesplayer-touch-icon.png">
-  <link rel="stylesheet" href="css/main.css?v=2.2.7-tp4">
+  <link rel="stylesheet" href="css/main.css?v=2.2.7-tp6">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@800&display=swap"
@@ -153,7 +153,7 @@
                 </button>
               </div>
               <div class="sidebar-controls">
-                <select id="source-select" class="source-select">
+                <select id="source-select" class="source-select" hidden>
                   <option value="">All Sources</option>
                 </select>
                 <button id="toggle-groups" class="btn btn-sm btn-ghost" title="Expand/Collapse All">
@@ -339,7 +339,7 @@
         <div class="movies-header">
           <h2>Movies</h2>
           <div class="movies-controls">
-            <select id="movies-source-select" class="source-select">
+            <select id="movies-source-select" class="source-select" hidden>
               <option value="">All Sources</option>
             </select>
             <select id="movies-category-select" class="source-select">
@@ -369,7 +369,7 @@
         <div class="series-header">
           <h2>Series</h2>
           <div class="series-controls">
-            <select id="series-source-select" class="source-select">
+            <select id="series-source-select" class="source-select" hidden>
               <option value="">All Sources</option>
             </select>
             <select id="series-category-select" class="source-select">
@@ -435,22 +435,6 @@
               <div id="xtream-list" class="source-list"></div>
             </div>
 
-            <div class="source-section">
-              <div class="section-header">
-                <h3>M3U Playlists</h3>
-                <button class="btn btn-primary" id="add-m3u">+ Add M3U</button>
-              </div>
-              <div id="m3u-list" class="source-list"></div>
-            </div>
-
-            <div class="source-section">
-              <div class="section-header">
-                <h3>EPG Sources</h3>
-                <button class="btn btn-primary" id="add-epg">+ Add EPG</button>
-              </div>
-              <div id="epg-list" class="source-list"></div>
-            </div>
-
             <div class="source-section" data-admin-only>
               <h3>EPG Data Settings</h3>
               <div class="setting-item">
@@ -472,7 +456,7 @@
                   class="icon" style="width: 1em; height: 1em; vertical-align: middle;">
                   <path
                     d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z" />
-                </svg> button next to EPG sources for manual refresh</p>
+                </svg> button next to a source for manual refresh</p>
             </div>
           </div>
 
@@ -1179,7 +1163,7 @@
 
   <!-- JavaScript -->
   <script src="/js/icons.js"></script>
-  <script src="/js/api.js?v=auth-2-tp1"></script>
+  <script src="/js/api.js?v=auth-2-tp2"></script>
   <script src="/js/components/PlaybackSessions.js?v=1"></script>
   <script src="/js/components/VodDuration.js?v=1"></script>
   <script src="/js/components/CaptionTracks.js?v=4"></script>
@@ -1193,7 +1177,7 @@
   <script src="/js/canvas/CanvasVideo.js?v=6"></script>
   <script src="/js/components/VideoPlayer.js?v=11"></script>
   <script src="/js/components/ChannelList.js?v=5"></script>
-  <script src="/js/components/SourceManager.js?v=5"></script>
+  <script src="/js/components/SourceManager.js?v=7"></script>
   <script src="/js/components/EpgGuide.js?v=3"></script>
   <script src="/js/pages/HomePage.js?v=5"></script>
   <script src="/js/pages/LivePage.js?v=5"></script>
@@ -1202,7 +1186,7 @@
   <script src="/js/pages/SeriesPage.js?v=2"></script>
   <script src="/js/components/DiagnosticsPanel.js?v=1"></script>
   <script src="/js/pages/Settings.js?v=3"></script>
-  <script src="/js/pages/WatchPage.js?v=13"></script>
+  <script src="/js/pages/WatchPage.js?v=14"></script>
   <script src="/js/app.js?v=9"></script>
 
 </body>

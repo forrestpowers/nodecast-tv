@@ -6,8 +6,6 @@
 class SourceManager {
     constructor() {
         this.xtreamList = document.getElementById('xtream-list');
-        this.m3uList = document.getElementById('m3u-list');
-        this.epgList = document.getElementById('epg-list');
 
         // Content browser state
         this.contentType = 'channels'; // 'channels' or 'movies'
@@ -16,6 +14,7 @@ class SourceManager {
         this.originalHiddenSet = new Set(); // Set of hidden item keys (state when loaded)
         this.expandedGroups = new Set(); // Set of expanded group IDs
         this.searchQuery = ''; // Search filter for content browser
+        this.newSources = new Set(); // Added here and still on their first sync
 
         this.init();
     }
@@ -23,8 +22,6 @@ class SourceManager {
     init() {
         // Add source buttons
         document.getElementById('add-xtream').addEventListener('click', () => this.showAddModal('xtream'));
-        document.getElementById('add-m3u').addEventListener('click', () => this.showAddModal('m3u'));
-        document.getElementById('add-epg').addEventListener('click', () => this.showAddModal('epg'));
 
         // Initialize content browser
         this.initContentBrowser();
@@ -113,8 +110,10 @@ class SourceManager {
             const [sources] = await Promise.all([API.sources.getAll(), this.loadAccessUsers()]);
 
             this.renderSourceList(this.xtreamList, sources.filter(s => s.type === 'xtream'), 'xtream');
-            this.renderSourceList(this.m3uList, sources.filter(s => s.type === 'm3u'), 'm3u');
-            this.renderSourceList(this.epgList, sources.filter(s => s.type === 'epg'), 'epg');
+
+            // A login has one provider; only admins add more
+            const hasOwn = sources.some(s => s.type === 'xtream' && s.canManage);
+            document.getElementById('add-xtream').hidden = hasOwn && !window.app?.isAdmin();
         } catch (err) {
             console.error('Error loading sources:', err);
         }
@@ -321,7 +320,8 @@ class SourceManager {
                 }
             }
 
-            await API.sources.create({ type, name, url, username, password, zapBeforeStreaming, zapDelay, allowedUsers });
+            const source = await API.sources.create({ type, name, url, username, password, zapBeforeStreaming, zapDelay, allowedUsers });
+            this.newSources.add(source.id);
             document.getElementById('modal').classList.remove('active');
             await this.loadSources();
 
@@ -611,13 +611,22 @@ class SourceManager {
             const sources = await API.sources.getAll();
             const select = document.getElementById('content-source-select');
             if (!select) return;
+            const previous = select.value;
 
             // Keep the placeholder option
             select.innerHTML = '<option value="">Select a source...</option>';
 
-            sources.filter(s => s.canManage && (s.type === 'xtream' || s.type === 'm3u')).forEach(source => {
+            const manageable = sources.filter(s => s.canManage && (s.type === 'xtream' || s.type === 'm3u'));
+            manageable.forEach(source => {
                 select.innerHTML += `<option value="${source.id}">${source.name} (${source.type})</option>`;
             });
+
+            // A login's own provider needs no choosing. Returning to the tab keeps unsaved changes.
+            select.hidden = manageable.length === 1;
+            if (manageable.length === 1) {
+                select.value = manageable[0].id;
+                if (select.value !== previous) this.reloadContentTree();
+            }
         } catch (err) {
             console.error('Error loading content sources:', err);
         }
@@ -1385,6 +1394,15 @@ class SourceManager {
      */
     updateSyncStatus(statuses) {
         if (!statuses || !Array.isArray(statuses)) return;
+
+        // The channel list read a new source mid-sync: read it again once the sync is done
+        for (const id of this.newSources) {
+            const rows = statuses.filter(s => s.source_id === id);
+            if (rows.length === 0 || rows.some(s => s.status === 'syncing')) continue;
+            this.newSources.delete(id);
+            const channelList = window.app?.channelList;
+            if (channelList) channelList.loadSources().then(() => channelList.loadChannels());
+        }
 
         // Reset all to normal state if not in status list (handled implicitly by iterating sources or statuses?)
         // Better: iterate visible source items and check against statuses
