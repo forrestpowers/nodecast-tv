@@ -32,7 +32,7 @@ function initSchema() {
     // Categories (Groups)
     db.exec(`
         CREATE TABLE IF NOT EXISTS categories (
-            id TEXT PRIMARY KEY, -- Composite key: sourceId:categoryId
+            id TEXT PRIMARY KEY, -- Composite key: sourceId:type:categoryId
             source_id INTEGER NOT NULL,
             category_id TEXT NOT NULL,
             type TEXT NOT NULL, -- 'live', 'movie', 'series'
@@ -152,6 +152,19 @@ function initSchema() {
     } catch (e) {
         // Column already exists, ignore
     }
+
+    // Migration: Key categories by type as well, keeping each row's hidden state
+    const categoryKey = `source_id || ':' || type || ':' || category_id`;
+    db.transaction(() => {
+        // Old keys are parked first, because a group name with a colon can spell another row's new key
+        const { changes } = db.prepare(`UPDATE categories SET id = 'old:' || rowid WHERE id != ${categoryKey}`).run();
+        if (changes === 0) return;
+        db.exec(`
+            UPDATE OR IGNORE categories SET id = ${categoryKey} WHERE id LIKE 'old:%';
+            DELETE FROM categories WHERE id LIKE 'old:%';
+        `);
+        console.log(`[SQLite] Rekeyed ${changes} categories by type`);
+    })();
 
     console.log('[SQLite] Schema initialized');
 }

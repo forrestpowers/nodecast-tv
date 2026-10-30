@@ -272,7 +272,7 @@ class SyncService {
             for (const cat of batch) {
                 const catId = cat.category_id; // standard xtream field
                 const name = cat.category_name;
-                const id = `${sourceId}:${catId}`;
+                const id = `${sourceId}:${type}:${catId}`; // providers can reuse an ID across types
                 stmt.run(id, sourceId, String(catId), type, name, cat.parent_id || null, JSON.stringify(cat));
             }
         });
