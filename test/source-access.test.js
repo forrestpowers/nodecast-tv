@@ -5,7 +5,7 @@ const path = require('node:path');
 const os = require('node:os');
 const http = require('node:http');
 const { spawn } = require('node:child_process');
-const { canUseSource, parseAllowedUsers } = require('../server/services/sourceAccess');
+const { canUseSource, canManageSource, parseAllowedUsers } = require('../server/services/sourceAccess');
 
 test('a source without allowedUsers is shared, a restricted one only reaches its logins and admins', () => {
     const viewer = { id: 7, role: 'viewer' };
@@ -15,6 +15,13 @@ test('a source without allowedUsers is shared, a restricted one only reaches its
     assert.equal(canUseSource(viewer, { id: 1, allowedUsers: [9] }), false);
     assert.equal(canUseSource({ id: 1, role: 'admin' }, { id: 1, allowedUsers: [9] }), true);
     assert.equal(canUseSource(viewer, undefined), false);
+
+    // Viewers manage only what is theirs alone
+    assert.equal(canManageSource(viewer, { id: 1, allowedUsers: [7] }), true);
+    assert.equal(canManageSource(viewer, { id: 1, allowedUsers: [7, 9] }), false);
+    assert.equal(canManageSource(viewer, { id: 1, allowedUsers: [9] }), false);
+    assert.equal(canManageSource(viewer, { id: 1 }), false);
+    assert.equal(canManageSource({ id: 1, role: 'admin' }, { id: 1, allowedUsers: [9] }), true);
 
     assert.deepEqual(parseAllowedUsers(['3', 3, 4, -1, 0, 1.5, 'x', null]), [3, 4]);
     assert.deepEqual(parseAllowedUsers('3'), []);
@@ -93,8 +100,8 @@ test('each login only sees the sources it may use', async t => {
     assert.equal((await request(`/api/proxy/xtream/${aliceSource.id}/live_categories`, { headers: alice.headers })).status, 200);
     assert.equal((await request(`/api/proxy/xtream/${bobSource.id}/live_categories`, { headers: admin })).status, 200);
 
-    // Viewers still cannot change who has access
-    assert.equal((await request(`/api/sources/${bobSource.id}`, { headers: alice.headers, method: 'PUT', body: { allowedUsers: [] } })).status, 403);
+    // Bob's source stays out of Alice's reach for changes too
+    assert.equal((await request(`/api/sources/${bobSource.id}`, { headers: alice.headers, method: 'PUT', body: { name: 'Mine' } })).status, 404);
 
     // Favorites of a source a login loses are hidden, and come back when access returns
     await request('/api/favorites', { headers: alice.headers, body: { sourceId: shared.id, itemId: 'ch1', itemType: 'channel' } });
@@ -108,4 +115,62 @@ test('each login only sees the sources it may use', async t => {
     await request(`/api/sources/${shared.id}`, { headers: admin, method: 'PUT', body: { allowedUsers: [] } });
     assert.equal(await favorites(), 1);
     assert.deepEqual(await names(alice), ['Alice TV', 'Shared']);
+});
+
+test('viewers manage their own services, admins manage everything, shared sources stay read-only', async t => {
+    const playlist = http.createServer((req, res) => res.end('#EXTM3U\n#EXTINF:-1 group-title="News",Channel\nhttp://127.0.0.1:1/live.ts\n'));
+    await new Promise(resolve => playlist.listen(0, '127.0.0.1', resolve));
+    t.after(() => new Promise(resolve => playlist.close(resolve)));
+    const url = `http://127.0.0.1:${playlist.address().port}/list.m3u`;
+
+    const request = await startApp(t);
+    const cookie = response => ({ Cookie: response.cookie.split(';')[0] });
+    const admin = cookie(await request('/api/auth/setup', { body: { username: 'Admin', password: 'password123' } }));
+    const login = async name => {
+        const user = await request('/api/auth/users', { headers: admin, body: { username: name, password: 'password123', role: 'viewer' } });
+        return { id: user.body.id, headers: cookie(await request('/api/auth/login', { body: { username: name, password: 'password123' } })) };
+    };
+    const alice = await login('Alice');
+    const bob = await login('Bob');
+
+    // A viewer's source is theirs alone, whatever the form sends
+    const own = await request('/api/sources', { headers: alice.headers, body: { type: 'xtream', name: 'Alice IPTV', url, username: 'a', password: 'secret', allowedUsers: [] } });
+    assert.equal(own.status, 201);
+    assert.deepEqual(own.body.allowedUsers, [alice.id]);
+    assert.equal((await request(`/api/sources/${own.body.id}`, { headers: bob.headers })).status, 404);
+    const [listed] = (await request('/api/sources', { headers: alice.headers })).body;
+    assert.equal(listed.canManage, true);
+
+    const change = (who, id, body) => request(`/api/sources/${id}`, { headers: who, method: 'PUT', body });
+    assert.equal((await change(alice.headers, own.body.id, { name: 'Renamed' })).body.name, 'Renamed');
+    assert.deepEqual((await change(alice.headers, own.body.id, { allowedUsers: [] })).body.allowedUsers, [alice.id], 'viewers cannot share it');
+    assert.equal((await request(`/api/sources/${own.body.id}`, { headers: alice.headers })).body.password, 'secret');
+    assert.equal((await request(`/api/sources/${own.body.id}/toggle`, { headers: alice.headers, method: 'POST' })).status, 200);
+    assert.equal((await request(`/api/proxy/cache/${own.body.id}`, { headers: alice.headers, method: 'DELETE' })).status, 200);
+
+    // A shared source is usable but read-only, without its password
+    const shared = (await request('/api/sources', { headers: admin, body: { type: 'xtream', name: 'Shared', url, username: 's', password: 'hidden' } })).body;
+    assert.equal((await request(`/api/sources/${shared.id}`, { headers: alice.headers })).body.password, '••••••••');
+    assert.equal((await request('/api/sources/type/xtream', { headers: alice.headers })).body.find(s => s.id === shared.id).password, '••••••••');
+    assert.equal((await request('/api/sources', { headers: alice.headers })).body.find(s => s.id === shared.id).canManage, false);
+    assert.equal((await change(alice.headers, shared.id, { name: 'Mine' })).status, 403);
+    for (const [endpoint, method] of [[`/api/sources/${shared.id}`, 'DELETE'], [`/api/sources/${shared.id}/toggle`, 'POST'], [`/api/sources/${shared.id}/sync`, 'POST'], [`/api/proxy/cache/${shared.id}`, 'DELETE'], ['/api/sources/sync-all', 'POST']]) {
+        assert.equal((await request(endpoint, { headers: alice.headers, method })).status, 403, endpoint);
+    }
+
+    // Hiding channels changes a source for everyone on it
+    const hide = (who, body, path = '/api/channels/hide') => request(path, { headers: who, body });
+    assert.equal((await hide(alice.headers, { sourceId: own.body.id, itemType: 'channel', itemId: 'x' })).status, 200);
+    assert.equal((await hide(alice.headers, { sourceId: shared.id, itemType: 'channel', itemId: 'x' })).status, 403);
+    assert.equal((await hide(alice.headers, { sourceId: String(shared.id), contentType: 'channels' }, '/api/channels/hide/all')).status, 403);
+    assert.equal((await hide(alice.headers, { items: [{ sourceId: own.body.id, itemType: 'channel', itemId: 'x' }, { sourceId: shared.id, itemType: 'channel', itemId: 'x' }] }, '/api/channels/hide/bulk')).status, 403);
+
+    // App-wide settings stay with admins
+    assert.equal((await request('/api/settings', { headers: alice.headers, method: 'PUT', body: { epgRefreshInterval: '1' } })).status, 403);
+
+    // Admins reach every service, and can hand one to a login
+    assert.equal((await change(admin, own.body.id, { name: 'Fixed by admin' })).body.name, 'Fixed by admin');
+    await change(admin, shared.id, { allowedUsers: [bob.id] });
+    assert.equal((await change(bob.headers, shared.id, { name: 'Bob now' })).body.name, 'Bob now');
+    assert.equal((await request(`/api/sources/${own.body.id}`, { headers: alice.headers, method: 'DELETE' })).status, 200);
 });

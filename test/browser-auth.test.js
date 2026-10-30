@@ -10,7 +10,7 @@ test('browser startup uses its cookie without requiring a stored token and migra
         const requests = [], redirects = [];
         const context = vm.createContext({ console: { error() {} },
             window: { location: { replace: url => redirects.push(url) } },
-            document: { addEventListener() {}, querySelector: () => null },
+            document: { addEventListener() {}, querySelector: () => null, body: { classList: { toggle() {} } } },
             localStorage: { getItem: key => storage.get(key), removeItem: key => storage.delete(key) },
             fetch: async (url, options) => { requests.push({ url, options }); return { ok: true, json: async () => ({ id: 1, role: 'viewer' }) }; } });
         vm.runInContext(fs.readFileSync(path.join(__dirname, '../public/js/app.js'), 'utf8'), context);

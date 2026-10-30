@@ -15,7 +15,7 @@ const SERVICE_REF = /^[0-9A-Fa-f]{1,8}(?::[0-9A-Fa-f]{1,8}){9}:?$/;
  * Body: { sourceId: number, streamId: string }
  *
  * The receiver address is never taken from the client: it is derived from the
- * configured (admin-managed) M3U source URL, and the channel must belong to
+ * configured M3U source URL, and the channel must belong to
  * that source.
  */
 router.post('/zap', async (req, res) => {

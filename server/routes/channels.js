@@ -3,6 +3,9 @@ const router = express.Router();
 const { getDb } = require('../db/sqlite');
 const sourceAccess = require('../services/sourceAccess');
 
+// Hiding changes a source for everyone using it, so it needs a source this login manages.
+router.use(sourceAccess.requireManagedBody);
+
 // Helper to map API item types to DB types and tables
 function mapItemType(apiType) {
     switch (apiType) {
@@ -286,47 +289,6 @@ router.post('/hide/all', async (req, res) => {
     } catch (err) {
         console.error('Error hide all:', err);
         res.status(500).json({ error: 'Failed to hide all' });
-    }
-});
-
-// Get recent movies or series
-router.get('/recent', async (req, res) => {
-    try {
-        const { type, limit = 12 } = req.query;
-        if (!type || (type !== 'movie' && type !== 'series')) {
-            return res.status(400).json({ error: 'Valid type (movie or series) is required' });
-        }
-
-        const db = getDb();
-        // Only from the sources this login may use (null: all of them)
-        const allowed = await sourceAccess.allowedSourceIds(req.user);
-        const sourceFilter = allowed ? `AND p.source_id IN (${[...allowed].map(() => '?').join(',') || 'NULL'})` : '';
-        const recentItems = db.prepare(`
-            SELECT * FROM playlist_items p
-            WHERE p.type = ? 
-              AND p.is_hidden = 0
-              ${sourceFilter}
-              AND NOT EXISTS (
-                  SELECT 1 FROM categories c 
-                  WHERE c.source_id = p.source_id 
-                    AND c.category_id = p.category_id 
-                    AND c.type = p.type 
-                    AND c.is_hidden = 1
-              )
-            ORDER BY p.added_at DESC
-            LIMIT ?
-        `).all(type, ...(allowed || []), parseInt(limit));
-
-        // Parse JSON data for each item
-        const formatted = recentItems.map(item => ({
-            ...item,
-            data: JSON.parse(item.data)
-        }));
-
-        res.json(formatted);
-    } catch (err) {
-        console.error(`Error getting recent ${req.query.type}:`, err);
-        res.status(500).json({ error: 'Failed to get recent items' });
     }
 });
 

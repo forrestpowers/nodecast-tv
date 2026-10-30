@@ -11,7 +11,7 @@
   <meta name="description" content="Stream live TV, movies, and series with EPG support">
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
   <link rel="apple-touch-icon" href="/img/tesplayer-touch-icon.png">
-  <link rel="stylesheet" href="css/main.css?v=2.2.7-tp2">
+  <link rel="stylesheet" href="css/main.css?v=2.2.7-tp3">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@800&display=swap"
@@ -417,8 +417,9 @@
           <!-- Tabs -->
           <div class="tabs">
             <button class="tab active" data-tab="sources">Sources</button>
-            <button class="tab" data-tab="player">Player</button>
-            <button class="tab" data-tab="transcode">Transcoding</button>
+            <button class="tab" data-tab="player" data-admin-only>Player</button>
+            <button class="tab" data-tab="playback">Playback</button>
+            <button class="tab" data-tab="transcode" data-admin-only>Transcoding</button>
             <button class="tab" data-tab="content">Manage Content</button>
             <button class="tab" data-tab="users" id="users-tab" style="display:none;">Users</button>
           </div>
@@ -449,7 +450,7 @@
               <div id="epg-list" class="source-list"></div>
             </div>
 
-            <div class="source-section">
+            <div class="source-section" data-admin-only>
               <h3>EPG Data Settings</h3>
               <div class="setting-item">
                 <label for="epg-refresh-interval">Auto-refresh EPG data every:</label>
@@ -544,6 +545,56 @@
                 <div class="shortcut"><kbd>M</kbd> Mute/Unmute</div>
                 <div class="shortcut"><kbd>I</kbd> Toggle info overlay</div>
                 <div class="shortcut"><kbd>PgUp</kbd> / <kbd>PgDn</kbd> Channel up/down</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Playback Tab: saved in this browser, so every login needs it -->
+          <div id="tab-playback" class="tab-content">
+            <div class="settings-section">
+              <h3>This Device</h3>
+              <p class="hint">Saved in this browser only. Set these from the car's browser for the car.</p>
+              <div class="setting-item">
+                <div class="setting-info" style="flex: 1;">
+                  <span class="setting-label">Canvas Playback (this device)</span>
+                  <span class="setting-hint">Decode video with WebCodecs and draw it on a canvas instead of a video
+                    element, so it keeps playing in the Tesla browser outside of Park. For passengers only.
+                    Auto enables it in the Tesla browser.</span>
+                </div>
+                <select id="setting-canvas-mode" class="source-select" style="width: auto; min-width: 200px;">
+                  <option value="auto">Auto (Tesla browser)</option>
+                  <option value="on">Always</option>
+                  <option value="off">Off</option>
+                </select>
+              </div>
+              <div class="setting-item">
+                <div class="setting-info" style="flex: 1;">
+                  <span class="setting-label">Canvas Decoder</span>
+                  <span class="setting-hint">WebCodecs decodes H.264 (efficient, hardware). JSMpeg decodes MPEG-1 in
+                    WebAssembly and works where WebCodecs is missing, including the Tesla browser. WebRTC
+                    (Enhanced) streams over the server's WebRTC media port for smoother playback; it needs that
+                    port reachable (WEBRTC_PORT, default 8189 UDP/TCP) and falls back automatically. Auto picks
+                    WebCodecs when available.</span>
+                </div>
+                <select id="setting-canvas-engine" class="source-select" style="width: auto; min-width: 200px;">
+                  <option value="auto">Auto</option>
+                  <option value="webcodecs">WebCodecs (H.264)</option>
+                  <option value="jsmpeg">JSMpeg (MPEG-1)</option>
+                  <option value="webrtc">WebRTC (Enhanced)</option>
+                </select>
+              </div>
+              <div class="setting-item">
+                <div class="setting-info" style="flex: 1;">
+                  <span class="setting-label">Canvas Max Resolution</span>
+                  <span class="setting-hint">Taller H.264 is re-encoded down to this height. Use 480p or 720p on
+                    older cars (MCU2).</span>
+                </div>
+                <select id="setting-canvas-height" class="source-select" style="width: auto; min-width: 200px;">
+                  <option value="360">360p</option>
+                  <option value="480">480p</option>
+                  <option value="720">720p</option>
+                  <option value="1080">1080p</option>
+                </select>
               </div>
             </div>
           </div>
@@ -696,48 +747,6 @@
                   <span class="setting-hint">Remux streams to MP4 container. Enable for raw .ts streams from IPTV
                     middleware like m3u-editor or dispatcharr.</span>
                 </div>
-              </div>
-              <div class="setting-item">
-                <div class="setting-info" style="flex: 1;">
-                  <span class="setting-label">Canvas Playback (this device)</span>
-                  <span class="setting-hint">Decode video with WebCodecs and draw it on a canvas instead of a video
-                    element, so it keeps playing in the Tesla browser outside of Park. For passengers only.
-                    Auto enables it in the Tesla browser.</span>
-                </div>
-                <select id="setting-canvas-mode" class="source-select" style="width: auto; min-width: 200px;">
-                  <option value="auto">Auto (Tesla browser)</option>
-                  <option value="on">Always</option>
-                  <option value="off">Off</option>
-                </select>
-              </div>
-              <div class="setting-item">
-                <div class="setting-info" style="flex: 1;">
-                  <span class="setting-label">Canvas Decoder</span>
-                  <span class="setting-hint">WebCodecs decodes H.264 (efficient, hardware). JSMpeg decodes MPEG-1 in
-                    WebAssembly and works where WebCodecs is missing, including the Tesla browser. WebRTC
-                    (Enhanced) streams over the server's WebRTC media port for smoother playback; it needs that
-                    port reachable (WEBRTC_PORT, default 8189 UDP/TCP) and falls back automatically. Auto picks
-                    WebCodecs when available.</span>
-                </div>
-                <select id="setting-canvas-engine" class="source-select" style="width: auto; min-width: 200px;">
-                  <option value="auto">Auto</option>
-                  <option value="webcodecs">WebCodecs (H.264)</option>
-                  <option value="jsmpeg">JSMpeg (MPEG-1)</option>
-                  <option value="webrtc">WebRTC (Enhanced)</option>
-                </select>
-              </div>
-              <div class="setting-item">
-                <div class="setting-info" style="flex: 1;">
-                  <span class="setting-label">Canvas Max Resolution</span>
-                  <span class="setting-hint">Taller H.264 is re-encoded down to this height. Use 480p or 720p on
-                    older cars (MCU2).</span>
-                </div>
-                <select id="setting-canvas-height" class="source-select" style="width: auto; min-width: 200px;">
-                  <option value="360">360p</option>
-                  <option value="480">480p</option>
-                  <option value="720">720p</option>
-                  <option value="1080">1080p</option>
-                </select>
               </div>
               <div class="setting-item">
                 <div class="setting-info" style="flex: 1;">
@@ -1173,16 +1182,16 @@
   <script src="/js/canvas/CanvasVideo.js?v=5"></script>
   <script src="/js/components/VideoPlayer.js?v=10"></script>
   <script src="/js/components/ChannelList.js?v=4"></script>
-  <script src="/js/components/SourceManager.js?v=4"></script>
+  <script src="/js/components/SourceManager.js?v=5"></script>
   <script src="/js/components/EpgGuide.js?v=2"></script>
-  <script src="/js/pages/HomePage.js?v=2"></script>
+  <script src="/js/pages/HomePage.js?v=3"></script>
   <script src="/js/pages/LivePage.js?v=3"></script>
   <script src="/js/pages/Guide.js?v=2"></script>
   <script src="/js/pages/MoviesPage.js?v=4"></script>
   <script src="/js/pages/SeriesPage.js?v=1"></script>
   <script src="/js/pages/Settings.js?v=2"></script>
   <script src="/js/pages/WatchPage.js?v=12"></script>
-  <script src="/js/app.js?v=5"></script>
+  <script src="/js/app.js?v=6"></script>
 
 </body>
 

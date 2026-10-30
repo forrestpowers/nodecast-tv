@@ -182,13 +182,8 @@ class App {
 
             this.currentUser = await response.json();
 
-            // Hide settings for viewers
-            if (this.currentUser.role === 'viewer') {
-                const settingsLink = document.querySelector('.nav-link[data-page="settings"]');
-                if (settingsLink) {
-                    settingsLink.style.display = 'none';
-                }
-            }
+            // Admins only manage the app (main.css hides everything else for .is-admin)
+            document.body.classList.toggle('is-admin', this.isAdmin());
 
             // Add logout button to navbar
             this.addLogoutButton();
@@ -200,6 +195,10 @@ class App {
             window.location.replace('/login.html');
             return false;
         }
+    }
+
+    isAdmin() {
+        return this.currentUser?.role === 'admin';
     }
 
     addLogoutButton() {
@@ -232,6 +231,8 @@ class App {
     }
 
     navigateTo(pageName, replaceHistory = false) {
+        if (this.isAdmin()) pageName = 'settings';
+
         // Don't navigate if already on this page
         if (this.currentPage === pageName && !replaceHistory) {
             return;

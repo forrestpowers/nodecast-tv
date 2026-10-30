@@ -10,9 +10,11 @@ const xtreamApi = require('../services/xtreamApi');
 const syncService = require('../services/syncService');
 const m3uParser = require('../services/m3uParser');
 const sourceAccess = require('../services/sourceAccess');
+const { requireAdmin } = require('../auth');
 
-// Each login only reaches the sources it may use (see services/sourceAccess).
-router.param('id', sourceAccess.sourceParam);
+// Each login only reaches the sources it may use, and changes the ones it manages
+// (see services/sourceAccess).
+router.param('id', sourceAccess.manageParam);
 
 // Get all sources
 router.get('/', async (req, res) => {
@@ -21,6 +23,7 @@ router.get('/', async (req, res) => {
         // Don't expose passwords in list view
         const sanitized = allSources.map(s => ({
             ...s,
+            canManage: sourceAccess.canManageSource(req.user, s),
             password: s.password ? '••••••••' : null
         }));
         res.json(sanitized);
@@ -47,7 +50,7 @@ router.get('/status', async (req, res) => {
 router.get('/type/:type', async (req, res) => {
     try {
         const typeSources = sourceAccess.filterSources(req.user, await sources.getByType(req.params.type));
-        res.json(typeSources);
+        res.json(typeSources.map(source => sourceAccess.forUser(req.user, source)));
     } catch (err) {
         console.error('Error getting sources by type:', err);
         res.status(500).json({ error: 'Failed to get sources' });
@@ -61,7 +64,7 @@ router.get('/:id', async (req, res) => {
         if (!source) {
             return res.status(404).json({ error: 'Source not found' });
         }
-        res.json(source);
+        res.json(sourceAccess.forUser(req.user, source));
     } catch (err) {
         console.error('Error getting source:', err);
         res.status(500).json({ error: 'Failed to get source' });
@@ -81,7 +84,9 @@ router.post('/', async (req, res) => {
             return res.status(400).json({ error: 'Invalid source type' });
         }
 
-        const source = await sources.create({ type, name, url, username, password, zapBeforeStreaming: zapBeforeStreaming === true, zapDelay: zapDelayValue(zapDelay), allowedUsers: sourceAccess.parseAllowedUsers(allowedUsers) });
+        // A viewer's own service belongs to that viewer; only admins choose who else gets a source
+        const access = req.user.role === 'admin' ? sourceAccess.parseAllowedUsers(allowedUsers) : [req.user.id];
+        const source = await sources.create({ type, name, url, username, password, zapBeforeStreaming: zapBeforeStreaming === true, zapDelay: zapDelayValue(zapDelay), allowedUsers: access });
         // Trigger Sync
         syncService.syncSource(source.id).catch(console.error);
         res.status(201).json(source);
@@ -109,7 +114,7 @@ router.put('/:id', async (req, res) => {
         if (password !== undefined) updates.password = password;
         if (zapBeforeStreaming !== undefined) updates.zapBeforeStreaming = zapBeforeStreaming === true;
         if (zapDelay !== undefined) updates.zapDelay = zapDelayValue(zapDelay);
-        if (allowedUsers !== undefined) updates.allowedUsers = sourceAccess.parseAllowedUsers(allowedUsers);
+        if (allowedUsers !== undefined && req.user?.role === 'admin') updates.allowedUsers = sourceAccess.parseAllowedUsers(allowedUsers);
         const updated = await sources.update(req.params.id, updates);
         if (!updated) return res.status(404).json({ error: 'Source not found' });
         // Trigger Sync (if critical fields changed? safely just trigger it)
@@ -281,7 +286,7 @@ router.get('/:id/estimate', async (req, res) => {
 });
 
 // Global Sync - sync all enabled sources
-router.post('/sync-all', async (req, res) => {
+router.post('/sync-all', requireAdmin, async (req, res) => {
     try {
         // Trigger global sync (async - don't wait for completion)
         syncService.syncAll().catch(console.error);

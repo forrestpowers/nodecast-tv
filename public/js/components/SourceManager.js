@@ -139,7 +139,7 @@ class SourceManager {
           <div class="source-url">${source.url}</div>
           <div class="source-access">${this.accessLabel(source)}</div>
         </div>
-        <div class="source-actions">
+        ${source.canManage ? `<div class="source-actions">
           <button class="btn btn-sm btn-secondary" data-action="refresh" title="Refresh Data">${Icons.refresh}</button>
           <button class="btn btn-sm btn-secondary" data-action="test" title="Test Connection">${Icons.link}</button>
           <button class="btn btn-sm btn-secondary" data-action="toggle" title="${source.enabled ? 'Disable' : 'Enable'}">
@@ -147,7 +147,7 @@ class SourceManager {
           </button>
           <button class="btn btn-sm btn-secondary" data-action="edit" title="Edit">${Icons.settings}</button>
           <button class="btn btn-sm btn-danger" data-action="delete" title="Delete">${Icons.close}</button>
-        </div>
+        </div>` : ''}
       </div>
     `).join('');
 
@@ -155,11 +155,11 @@ class SourceManager {
         container.querySelectorAll('.source-item').forEach(item => {
             const id = parseInt(item.dataset.id);
 
-            item.querySelector('[data-action="refresh"]').addEventListener('click', () => this.refreshSource(id, type));
-            item.querySelector('[data-action="test"]').addEventListener('click', () => this.testSource(id));
-            item.querySelector('[data-action="toggle"]').addEventListener('click', () => this.toggleSource(id));
-            item.querySelector('[data-action="edit"]').addEventListener('click', () => this.showEditModal(id, type));
-            item.querySelector('[data-action="delete"]').addEventListener('click', () => this.deleteSource(id));
+            item.querySelector('[data-action="refresh"]')?.addEventListener('click', () => this.refreshSource(id, type));
+            item.querySelector('[data-action="test"]')?.addEventListener('click', () => this.testSource(id));
+            item.querySelector('[data-action="toggle"]')?.addEventListener('click', () => this.toggleSource(id));
+            item.querySelector('[data-action="edit"]')?.addEventListener('click', () => this.showEditModal(id, type));
+            item.querySelector('[data-action="delete"]')?.addEventListener('click', () => this.deleteSource(id));
         });
     }
 
@@ -615,7 +615,7 @@ class SourceManager {
             // Keep the placeholder option
             select.innerHTML = '<option value="">Select a source...</option>';
 
-            sources.filter(s => s.type === 'xtream' || s.type === 'm3u').forEach(source => {
+            sources.filter(s => s.canManage && (s.type === 'xtream' || s.type === 'm3u')).forEach(source => {
                 select.innerHTML += `<option value="${source.id}">${source.name} (${source.type})</option>`;
             });
         } catch (err) {
@@ -807,9 +807,13 @@ class SourceManager {
 
     /**
      * Logins a source can be limited to: everyone but admins, who always see every source.
-     * Null when the user list is unavailable (not an admin), which hides the access controls.
+     * Null for viewers, who only add sources for themselves: that hides the access controls.
      */
     async loadAccessUsers() {
+        if (!window.app?.isAdmin()) {
+            this.accessUsers = null;
+            return;
+        }
         try {
             const users = await API.users.getAll();
             this.accessUsers = users.filter(u => u.role !== 'admin');
@@ -819,6 +823,7 @@ class SourceManager {
     }
 
     accessLabel(source) {
+        if (!this.accessUsers) return source.canManage ? '' : 'Shared';
         const allowed = source.allowedUsers || [];
         if (allowed.length === 0) return 'Everyone';
         const names = allowed.map(id => this.accessUsers?.find(u => u.id === id)?.username || `user ${id}`);
@@ -846,7 +851,7 @@ class SourceManager {
           <input type="radio" name="source-access" value="some" ${restricted ? 'checked' : ''}> Only these logins
         </label>
         <div id="source-access-users" class="source-access-users" ${restricted ? '' : 'hidden'}>${users}</div>
-        <p class="hint">Admins always see every source.</p>
+        <p class="hint">A login that is the only one on a source can edit it. Admins can edit every source.</p>
       </div>
     `;
     }

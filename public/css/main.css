@@ -1311,6 +1311,13 @@ video::cue {
   word-break: break-all;
 }
 
+/* Admins only get Settings; viewers don't get the app-wide settings */
+body.is-admin .nav-link[data-page]:not([data-page="settings"]),
+body.is-admin #now-playing-indicator,
+body:not(.is-admin) [data-admin-only] {
+  display: none !important;
+}
+
 .source-access {
   font-size: 0.75rem;
   color: var(--color-text-secondary);
@@ -4785,12 +4792,17 @@ kbd {
    Channel Tile Styles (Favorite Channels)
    ===================================================== */
 
+/* Two rows, filling top to bottom then sideways: more favorites scroll horizontally */
 .channel-tiles {
+  display: grid;
+  grid-template-rows: repeat(2, auto);
+  grid-auto-flow: column;
+  grid-auto-columns: max-content;
   gap: 16px;
 }
 
 .channel-tile {
-  flex: 0 0 100px;
+  width: 100px;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -4849,7 +4861,7 @@ kbd {
 /* Responsive: smaller tiles on mobile */
 @media (max-width: 480px) {
   .channel-tile {
-    flex: 0 0 80px;
+    width: 80px;
     padding: 8px 4px;
   }
 

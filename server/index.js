@@ -194,8 +194,8 @@ app.use('/api', (req, res, next) => {
     } catch (error) { res.status(400).json({ error: error.message }); }
 });
 app.use('/api', (req, res, next) => {
-    const adminAction = !['GET', 'HEAD', 'OPTIONS'].includes(req.method)
-        && /^\/(sources|channels|settings|proxy\/cache)(\/|$)/.test(req.path);
+    // Sources and what hangs off them are guarded per source: see services/sourceAccess
+    const adminAction = !['GET', 'HEAD', 'OPTIONS'].includes(req.method) && /^\/settings(\/|$)/.test(req.path);
     if (adminAction) return auth.requireAdmin(req, res, next);
     next();
 });

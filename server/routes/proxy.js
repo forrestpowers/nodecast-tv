@@ -13,6 +13,7 @@ const sourceAccess = require('../services/sourceAccess');
 
 // Each login only reaches the sources it may use (see services/sourceAccess).
 router.param('sourceId', sourceAccess.sourceParam);
+router.delete(['/cache/:sourceId', '/epg/:sourceId/cache'], sourceAccess.requireManage);
 const { getDb } = require('../db/sqlite'); // Import SQLite
 const xtreamApi = require('../services/xtreamApi');
 const epgParser = require('../services/epgParser');

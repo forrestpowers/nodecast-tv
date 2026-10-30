@@ -79,7 +79,7 @@ test('real application authenticates cookies and bearer clients, isolates users,
     const viewerCookie = login.cookie.split(';')[0];
     const viewerHeaders = { Cookie: viewerCookie };
     assert.equal((await request('/api/auth/me', { headers: viewerHeaders })).body.role, 'viewer');
-    for (const [route, method] of [['/api/settings', 'PUT'], ['/api/sources', 'POST'], ['/api/channels/hide', 'POST'], ['/api/auth/users', 'GET']]) {
+    for (const [route, method] of [['/api/settings', 'PUT'], ['/api/channels/hide', 'POST'], ['/api/auth/users', 'GET']]) {
         assert.equal((await request(route, { method, headers: viewerHeaders, body: method === 'GET' ? undefined : '{}' })).status, 403, route);
     }
     assert.equal((await request('/api/settings', { headers: viewerHeaders })).status, 200);
