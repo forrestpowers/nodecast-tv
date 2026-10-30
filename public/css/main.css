@@ -275,6 +275,7 @@ h4 {
   text-decoration: none;
   border-radius: var(--radius-md);
   transition: all var(--transition-fast);
+  white-space: nowrap;
 }
 
 .nav-link:hover {
@@ -1068,7 +1069,15 @@ video::cue {
   font-weight: 600;
 }
 
+/* The header wraps at some widths, so the grid takes what is left rather than a fixed height */
+#page-guide.active {
+  display: flex;
+  flex-direction: column;
+}
+
 .epg-grid {
+  flex: 1 1 0;
+  min-height: 0;
   height: calc(100vh - var(--navbar-height) - 60px);
   overflow: hidden;
   overflow-y: auto;
@@ -1360,7 +1369,8 @@ body:not(.is-admin) [data-admin-only] {
 }
 
 .source-select[hidden],
-.btn[hidden] {
+.btn[hidden],
+.nav-link[hidden] {
   display: none;
 }
 

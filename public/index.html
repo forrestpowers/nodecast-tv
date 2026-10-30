@@ -11,7 +11,7 @@
   <meta name="description" content="Stream live TV, movies, and series with EPG support">
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
   <link rel="apple-touch-icon" href="/img/tesplayer-touch-icon.png">
-  <link rel="stylesheet" href="css/main.css?v=2.2.7-tp6">
+  <link rel="stylesheet" href="css/main.css?v=2.2.7-tp7">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@800&display=swap"
@@ -81,7 +81,7 @@
             </svg></span>
           <span>TV Guide</span>
         </a>
-        <a href="#" class="nav-link" data-page="movies">
+        <a href="#" class="nav-link" data-page="movies" hidden>
           <span class="nav-icon"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"
               class="icon">
               <path
@@ -89,7 +89,7 @@
             </svg></span>
           <span>Movies</span>
         </a>
-        <a href="#" class="nav-link" data-page="series">
+        <a href="#" class="nav-link" data-page="series" hidden>
           <span class="nav-icon"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"
               class="icon">
               <path
@@ -793,8 +793,8 @@
               <div class="content-browser-header">
                 <div class="content-type-toggle">
                   <button class="btn btn-sm active" id="content-type-channels">Channels</button>
-                  <button class="btn btn-sm" id="content-type-movies">Movies</button>
-                  <button class="btn btn-sm" id="content-type-series">Series</button>
+                  <button class="btn btn-sm" id="content-type-movies" hidden>Movies</button>
+                  <button class="btn btn-sm" id="content-type-series" hidden>Series</button>
                 </div>
                 <select id="content-source-select" class="source-select">
                   <option value="">Select a source...</option>
@@ -1187,7 +1187,7 @@
   <script src="/js/components/DiagnosticsPanel.js?v=1"></script>
   <script src="/js/pages/Settings.js?v=3"></script>
   <script src="/js/pages/WatchPage.js?v=14"></script>
-  <script src="/js/app.js?v=9"></script>
+  <script src="/js/app.js?v=10"></script>
 
 </body>
 

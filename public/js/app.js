@@ -2,6 +2,9 @@
  * NodeCast TV Application Entry Point
  */
 
+// Live TV only for now: these pages are out of reach until they are ready for the car
+const DISABLED_PAGES = ['movies', 'series'];
+
 class App {
     constructor() {
         this.currentPage = 'home';
@@ -226,6 +229,7 @@ class App {
 
     navigateTo(pageName, replaceHistory = false) {
         if (this.isAdmin()) pageName = 'settings';
+        else if (DISABLED_PAGES.includes(pageName)) pageName = 'home';
 
         // Don't navigate if already on this page
         if (this.currentPage === pageName && !replaceHistory) {
