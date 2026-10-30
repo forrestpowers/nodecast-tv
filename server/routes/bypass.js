@@ -17,7 +17,7 @@ const { requestLimit } = require('../services/requestLimits');
  *   GET  /api/bypass/video      the file itself, for browsers without the WebRTC engine
  *
  * assets/bypass.mp4 is pre-rendered for WebRTC (constrained baseline H.264, a keyframe every
- * second, Opus) and starts with 4 s of black: a viewer joins a moment after publishing starts,
+ * second, Opus) and starts with 5 s of black: a viewer joins a moment after publishing starts,
  * and the login page covers the black with a fake progress screen.
  */
 

@@ -534,8 +534,9 @@
     <script>
         // "Bypass Login" is a joke: it signs nobody in, it plays a video. The WebRTC canvas engine
         // draws it on a canvas, so it also plays in the Tesla browser while driving.
-        const BYPASS_LEAD_IN = 4;   // seconds of black that /api/bypass's video starts with
-        const BYPASS_STEPS = ['Locating auth service\u2026', 'Spoofing session token\u2026', 'Escalating privileges\u2026', 'Access granted'];
+        const BYPASS_LEAD_IN = 5;   // seconds of black that /api/bypass's video starts with
+        const BYPASS_STEPS = ['Locating auth service\u2026', 'Spoofing session token\u2026', 'Escalating privileges\u2026',
+            'Draining Brandon\u2019s Binance account\u2026', 'Access granted'];
         const bypassOverlay = document.getElementById('bypass-overlay');
         const bypassStage = bypassOverlay.querySelector('.bypass-stage');
         const bypassProgress = document.getElementById('bypass-progress');
