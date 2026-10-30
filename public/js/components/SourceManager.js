@@ -110,7 +110,7 @@ class SourceManager {
      */
     async loadSources() {
         try {
-            const sources = await API.sources.getAll();
+            const [sources] = await Promise.all([API.sources.getAll(), this.loadAccessUsers()]);
 
             this.renderSourceList(this.xtreamList, sources.filter(s => s.type === 'xtream'), 'xtream');
             this.renderSourceList(this.m3uList, sources.filter(s => s.type === 'm3u'), 'm3u');
@@ -137,6 +137,7 @@ class SourceManager {
         <div class="source-info">
           <div class="source-name">${source.name}</div>
           <div class="source-url">${source.url}</div>
+          <div class="source-access">${this.accessLabel(source)}</div>
         </div>
         <div class="source-actions">
           <button class="btn btn-sm btn-secondary" data-action="refresh" title="Refresh Data">${Icons.refresh}</button>
@@ -165,7 +166,8 @@ class SourceManager {
     /**
      * Show add source modal
      */
-    showAddModal(type) {
+    async showAddModal(type) {
+        await this.loadAccessUsers();
         const modal = document.getElementById('modal');
         const title = document.getElementById('modal-title');
         const body = document.getElementById('modal-body');
@@ -182,6 +184,7 @@ class SourceManager {
     `;
 
         modal.classList.add('active');
+        this.attachAccessListeners();
 
         // Event listeners
         modal.querySelector('.modal-close').onclick = () => modal.classList.remove('active');
@@ -194,7 +197,7 @@ class SourceManager {
      */
     async showEditModal(id, type) {
         try {
-            const source = await API.sources.getById(id);
+            const [source] = await Promise.all([API.sources.getById(id), this.loadAccessUsers()]);
 
             const modal = document.getElementById('modal');
             const title = document.getElementById('modal-title');
@@ -210,6 +213,7 @@ class SourceManager {
       `;
 
             modal.classList.add('active');
+            this.attachAccessListeners();
 
             modal.querySelector('.modal-close').onclick = () => modal.classList.remove('active');
             document.getElementById('modal-cancel').onclick = () => modal.classList.remove('active');
@@ -239,6 +243,8 @@ class SourceManager {
       </div>
     `;
 
+        const accessField = this.getAccessField(source);
+
         if (type === 'xtream') {
             return `
         ${nameField}
@@ -252,6 +258,7 @@ class SourceManager {
           <input type="password" id="source-password" class="form-input" 
                  value="${source.password && !source.password.includes('•') ? source.password : ''}">
         </div>
+        ${accessField}
       `;
         }
 
@@ -270,7 +277,7 @@ class SourceManager {
         </div>
         ` : '';
 
-        return nameField + urlField + enigmaOptions;
+        return nameField + urlField + enigmaOptions + accessField;
     }
 
     /**
@@ -288,6 +295,8 @@ class SourceManager {
             alert('Name and URL are required');
             return;
         }
+        const allowedUsers = this.readAccessField();
+        if (allowedUsers === false) return;
 
         try {
             // Check M3U size before creating (large playlist warning)
@@ -312,7 +321,7 @@ class SourceManager {
                 }
             }
 
-            await API.sources.create({ type, name, url, username, password, zapBeforeStreaming, zapDelay });
+            await API.sources.create({ type, name, url, username, password, zapBeforeStreaming, zapDelay, allowedUsers });
             document.getElementById('modal').classList.remove('active');
             await this.loadSources();
 
@@ -339,8 +348,11 @@ class SourceManager {
             alert('Name and URL are required');
             return;
         }
+        const allowedUsers = this.readAccessField();
+        if (allowedUsers === false) return;
         try {
             const data = { name, url };
+            if (allowedUsers) data.allowedUsers = allowedUsers;
             if (type === 'xtream') {
                 data.username = username;
                 if (password) data.password = password;
@@ -791,6 +803,72 @@ class SourceManager {
                 ${itemsHtml}
             </div>
         `;
+    }
+
+    /**
+     * Logins a source can be limited to: everyone but admins, who always see every source.
+     * Null when the user list is unavailable (not an admin), which hides the access controls.
+     */
+    async loadAccessUsers() {
+        try {
+            const users = await API.users.getAll();
+            this.accessUsers = users.filter(u => u.role !== 'admin');
+        } catch (err) {
+            this.accessUsers = null;
+        }
+    }
+
+    accessLabel(source) {
+        const allowed = source.allowedUsers || [];
+        if (allowed.length === 0) return 'Everyone';
+        const names = allowed.map(id => this.accessUsers?.find(u => u.id === id)?.username || `user ${id}`);
+        return `Only: ${this.escapeHtml(names.join(', '))}`;
+    }
+
+    getAccessField(source = {}) {
+        if (!this.accessUsers) return '';
+        const allowed = source.allowedUsers || [];
+        const restricted = allowed.length > 0;
+        const users = this.accessUsers.length
+            ? this.accessUsers.map(u => `
+            <label class="checkbox-label">
+              <input type="checkbox" name="source-access-user" value="${u.id}" ${allowed.includes(u.id) ? 'checked' : ''}>
+              ${this.escapeHtml(u.username)}
+            </label>`).join('')
+            : '<p class="hint">No viewer logins yet. Add them under Users.</p>';
+        return `
+      <div class="form-group source-access-field">
+        <label>Who can use this source</label>
+        <label class="checkbox-label">
+          <input type="radio" name="source-access" value="all" ${restricted ? '' : 'checked'}> Everyone
+        </label>
+        <label class="checkbox-label">
+          <input type="radio" name="source-access" value="some" ${restricted ? 'checked' : ''}> Only these logins
+        </label>
+        <div id="source-access-users" class="source-access-users" ${restricted ? '' : 'hidden'}>${users}</div>
+        <p class="hint">Admins always see every source.</p>
+      </div>
+    `;
+    }
+
+    attachAccessListeners() {
+        const list = document.getElementById('source-access-users');
+        document.querySelectorAll('input[name="source-access"]').forEach(radio => {
+            radio.addEventListener('change', () => { list.hidden = radio.value !== 'some' || !radio.checked; });
+        });
+    }
+
+    /** The chosen allowedUsers ([] for everyone), undefined without the field, or false when invalid. */
+    readAccessField() {
+        const mode = document.querySelector('input[name="source-access"]:checked')?.value;
+        if (!mode) return undefined;
+        if (mode === 'all') return [];
+        const ids = [...document.querySelectorAll('input[name="source-access-user"]:checked')].map(cb => Number(cb.value));
+        if (ids.length === 0) {
+            alert('Pick at least one login, or choose Everyone.');
+            return false;
+        }
+        return ids;
     }
 
     escapeHtml(text) {

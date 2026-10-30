@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { getDb } = require('../db/sqlite');
 const { requireAuth } = require('../auth');
+const sourceAccess = require('../services/sourceAccess');
 
 // Middleware to ensure authentication
 router.use(requireAuth);
@@ -10,7 +11,7 @@ router.use(requireAuth);
  * GET /api/history
  * Returns the watch history for the authenticated user
  */
-router.get('/', (req, res) => {
+router.get('/', async (req, res) => {
     try {
         const db = getDb();
         const userId = req.user.id;
@@ -28,7 +29,7 @@ router.get('/', (req, res) => {
             data: JSON.parse(row.data || '{}')
         }));
 
-        res.json(history);
+        res.json(await sourceAccess.filterBySource(req.user, history));
     } catch (err) {
         console.error('[History] Error fetching history:', err);
         res.status(500).json({ error: 'Failed to fetch history' });

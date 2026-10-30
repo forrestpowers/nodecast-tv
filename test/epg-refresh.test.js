@@ -220,7 +220,7 @@ test('deleting a source through its route invalidates an in-flight guide refresh
     const { db, sync, sources, snapshot, stagedCount } = fixture(t, epg);
     const filename = path.join(__dirname, '..', 'server/routes/sources.js');
     let deleteRoute;
-    const router = { get() {}, post() {}, put() {}, delete(route, handler) { deleteRoute = handler; } };
+    const router = { param() {}, get() {}, post() {}, put() {}, delete(route, handler) { deleteRoute = handler; } };
     vm.runInNewContext(fs.readFileSync(filename, 'utf8'), { module: { exports: {} }, console: { log() {}, error() {} }, require(id) {
         if (id === 'express') return { Router: () => router };
         if (id === '../db') return { sources };

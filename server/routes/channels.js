@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { getDb } = require('../db/sqlite');
+const sourceAccess = require('../services/sourceAccess');
 
 // Helper to map API item types to DB types and tables
 function mapItemType(apiType) {
@@ -61,7 +62,7 @@ router.get('/hidden', async (req, res) => {
             if (apiType) hidden.push(resultFormat(row, apiType));
         });
 
-        res.json(hidden);
+        res.json(await sourceAccess.filterBySource(req.user, hidden));
     } catch (err) {
         console.error('Error getting hidden items:', err);
         res.status(500).json({ error: 'Failed to get hidden items' });
@@ -297,10 +298,14 @@ router.get('/recent', async (req, res) => {
         }
 
         const db = getDb();
+        // Only from the sources this login may use (null: all of them)
+        const allowed = await sourceAccess.allowedSourceIds(req.user);
+        const sourceFilter = allowed ? `AND p.source_id IN (${[...allowed].map(() => '?').join(',') || 'NULL'})` : '';
         const recentItems = db.prepare(`
             SELECT * FROM playlist_items p
             WHERE p.type = ? 
               AND p.is_hidden = 0
+              ${sourceFilter}
               AND NOT EXISTS (
                   SELECT 1 FROM categories c 
                   WHERE c.source_id = p.source_id 
@@ -310,7 +315,7 @@ router.get('/recent', async (req, res) => {
               )
             ORDER BY p.added_at DESC
             LIMIT ?
-        `).all(type, parseInt(limit));
+        `).all(type, ...(allowed || []), parseInt(limit));
 
         // Parse JSON data for each item
         const formatted = recentItems.map(item => ({

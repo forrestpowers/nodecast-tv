@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { favorites } = require('../db/sqlite');
 const { requireAuth } = require('../auth');
+const sourceAccess = require('../services/sourceAccess');
 
 // All favorites routes require authentication
 router.use(requireAuth);
@@ -11,7 +12,7 @@ router.get('/', async (req, res) => {
     try {
         const { sourceId, itemType } = req.query;
         const items = favorites.getAll(req.user.id, sourceId || null, itemType || null);
-        res.json(items);
+        res.json(await sourceAccess.filterBySource(req.user, items));
     } catch (err) {
         res.status(500).json({ error: err.message });
     }

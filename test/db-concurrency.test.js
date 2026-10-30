@@ -90,7 +90,7 @@ test('source route does not reapply fields from a stale read', async t => {
     await db.sources.update(source.id, { url: 'https://example.invalid/current' });
     const filename = path.join(__dirname, '..', 'server', 'routes', 'sources.js');
     const realRequire = createRequire(filename), routes = [];
-    const router = { get() {}, post() {}, delete() {}, put(route, handler) { routes.push(handler); } };
+    const router = { param() {}, get() {}, post() {}, delete() {}, put(route, handler) { routes.push(handler); } };
     const module = { exports: {} };
     vm.runInNewContext(await fs.readFile(filename, 'utf8'), {
         module, console, require(id) {

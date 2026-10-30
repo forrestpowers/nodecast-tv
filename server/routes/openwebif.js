@@ -3,6 +3,7 @@ const router = express.Router();
 const { sources } = require('../db');
 const { getDb } = require('../db/sqlite');
 const { validateHttpUrl } = require('../services/urlSecurity');
+const { canUseSource } = require('../services/sourceAccess');
 
 const ZAP_TIMEOUT_MS = 5000;
 // Enigma2 service reference: ten hex fields, e.g. 1:0:1:65:65:53:CE40000:0:0:0:
@@ -39,7 +40,7 @@ router.post('/zap', async (req, res) => {
         return res.status(500).json({ error: 'Server error' });
     }
 
-    if (!source || source.type !== 'm3u' || !source.enabled || !source.zapBeforeStreaming) {
+    if (!source || !canUseSource(req.user, source) || source.type !== 'm3u' || !source.enabled || !source.zapBeforeStreaming) {
         return res.status(404).json({ error: 'Zap is not enabled for this source' });
     }
     if (!item) {

@@ -9,11 +9,15 @@ const { getDb } = require('../db/sqlite');
 const xtreamApi = require('../services/xtreamApi');
 const syncService = require('../services/syncService');
 const m3uParser = require('../services/m3uParser');
+const sourceAccess = require('../services/sourceAccess');
+
+// Each login only reaches the sources it may use (see services/sourceAccess).
+router.param('id', sourceAccess.sourceParam);
 
 // Get all sources
 router.get('/', async (req, res) => {
     try {
-        const allSources = await sources.getAll();
+        const allSources = sourceAccess.filterSources(req.user, await sources.getAll());
         // Don't expose passwords in list view
         const sanitized = allSources.map(s => ({
             ...s,
@@ -31,7 +35,7 @@ router.get('/status', async (req, res) => {
     try {
         const { getDb } = require('../db/sqlite');
         const db = getDb();
-        const statuses = db.prepare('SELECT * FROM sync_status').all();
+        const statuses = await sourceAccess.filterBySource(req.user, db.prepare('SELECT * FROM sync_status').all());
         res.json(statuses);
     } catch (err) {
         console.error('Error getting sync status:', err);
@@ -42,7 +46,7 @@ router.get('/status', async (req, res) => {
 // Get sources by type
 router.get('/type/:type', async (req, res) => {
     try {
-        const typeSources = await sources.getByType(req.params.type);
+        const typeSources = sourceAccess.filterSources(req.user, await sources.getByType(req.params.type));
         res.json(typeSources);
     } catch (err) {
         console.error('Error getting sources by type:', err);
@@ -67,7 +71,7 @@ router.get('/:id', async (req, res) => {
 // Create source
 router.post('/', async (req, res) => {
     try {
-        const { type, name, url, username, password, zapBeforeStreaming, zapDelay } = req.body;
+        const { type, name, url, username, password, zapBeforeStreaming, zapDelay, allowedUsers } = req.body;
 
         if (!type || !name || !url) {
             return res.status(400).json({ error: 'Type, name, and URL are required' });
@@ -77,7 +81,7 @@ router.post('/', async (req, res) => {
             return res.status(400).json({ error: 'Invalid source type' });
         }
 
-        const source = await sources.create({ type, name, url, username, password, zapBeforeStreaming: zapBeforeStreaming === true, zapDelay: zapDelayValue(zapDelay) });
+        const source = await sources.create({ type, name, url, username, password, zapBeforeStreaming: zapBeforeStreaming === true, zapDelay: zapDelayValue(zapDelay), allowedUsers: sourceAccess.parseAllowedUsers(allowedUsers) });
         // Trigger Sync
         syncService.syncSource(source.id).catch(console.error);
         res.status(201).json(source);
@@ -95,7 +99,7 @@ router.put('/:id', async (req, res) => {
             return res.status(404).json({ error: 'Source not found' });
         }
 
-        const { name, url, username, password, zapBeforeStreaming, zapDelay } = req.body;
+        const { name, url, username, password, zapBeforeStreaming, zapDelay, allowedUsers } = req.body;
         // Omitted fields must be merged against the latest record inside the
         // database transaction, not the snapshot read before another edit.
         const updates = {};
@@ -105,6 +109,7 @@ router.put('/:id', async (req, res) => {
         if (password !== undefined) updates.password = password;
         if (zapBeforeStreaming !== undefined) updates.zapBeforeStreaming = zapBeforeStreaming === true;
         if (zapDelay !== undefined) updates.zapDelay = zapDelayValue(zapDelay);
+        if (allowedUsers !== undefined) updates.allowedUsers = sourceAccess.parseAllowedUsers(allowedUsers);
         const updated = await sources.update(req.params.id, updates);
         if (!updated) return res.status(404).json({ error: 'Source not found' });
         // Trigger Sync (if critical fields changed? safely just trigger it)

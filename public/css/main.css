@@ -1311,6 +1311,22 @@ video::cue {
   word-break: break-all;
 }
 
+.source-access {
+  font-size: 0.75rem;
+  color: var(--color-text-secondary);
+}
+
+.source-access-users {
+  margin: var(--space-xs) 0 0 var(--space-lg);
+}
+
+.source-access-field .checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-xs);
+}
+
 .source-actions {
   display: flex;
   gap: var(--space-xs);
