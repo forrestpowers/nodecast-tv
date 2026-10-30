@@ -135,9 +135,10 @@ class EpgGuide {
         console.log('[EPG] Starting display refresh timer: every 5 minutes');
 
         this._backgroundRefreshTimer = setInterval(async () => {
+            if (document.hidden) return; // Nobody is looking: the next tick catches up
             console.log('[EPG] Refreshing EPG display from cache');
             try {
-                await this.fetchEpgData(false); // Fetch cached data (no force refresh)
+                await this.fetchEpgData(false, { nowOnly: !this.fullGuideLoaded }); // Fetch cached data (no force refresh)
 
                 // Update channel list program info if visible
                 if (window.app?.channelList) {
@@ -175,6 +176,7 @@ class EpgGuide {
         try {
             this.container.innerHTML = '<div class="loading"></div>';
             await this.fetchEpgData(forceRefresh);
+            this.fullGuideLoaded = true;
             this.lastRefreshTime = new Date();
             this.render();
 
@@ -193,9 +195,23 @@ class EpgGuide {
     }
 
     /**
+     * Load only what is on now and next, which is all the Live TV sidebar needs.
+     * The TV Guide page loads the full window (loadEpg) when it is opened.
+     */
+    loadNowPlaying() {
+        if (this.fullGuideLoaded) return Promise.resolve();
+        return this.nowPlayingLoad ||= this.fetchEpgData(false, { nowOnly: true })
+            .then(() => {
+                this.lastRefreshTime = new Date();
+                this.startBackgroundRefresh();
+            })
+            .finally(() => { this.nowPlayingLoad = null; });
+    }
+
+    /**
      * Fetch EPG data from sources
      */
-    async fetchEpgData(forceRefresh = false) {
+    async fetchEpgData(forceRefresh = false, { nowOnly = false } = {}) {
         // Get ALL sources and filter for EPG-capable types
         const allSources = await API.sources.getAll();
         const sources = allSources.filter(s => (s.type === 'epg' || s.type === 'xtream') && s.enabled);
@@ -207,7 +223,7 @@ class EpgGuide {
         // Build query params for server-side caching
         // Sync interval is controlled by server, we just hint at max cache age
         const maxAge = 24; // hours - server controls actual refresh
-        const queryParams = forceRefresh ? '?refresh=1' : `?maxAge=${maxAge}`;
+        const queryParams = (forceRefresh ? '?refresh=1' : `?maxAge=${maxAge}`) + (nowOnly ? '&window=now' : '');
 
         // Load EPG from ALL sources in parallel
         const fetchPromises = sources.map(async (source) => {
@@ -247,6 +263,13 @@ class EpgGuide {
         }
 
         // Build secondary indexes for faster lookup
+        this.programmesByChannel = new Map();
+        this.programmes.forEach(programme => {
+            const list = this.programmesByChannel.get(programme.channelId);
+            if (list) list.push(programme);
+            else this.programmesByChannel.set(programme.channelId, [programme]);
+        });
+
         this.channelMap = new Map();
         // Index by ID
         this.channels.forEach(ch => {
@@ -260,6 +283,11 @@ class EpgGuide {
         // Load favorites
         const favs = await API.favorites.getAll();
         this.favorites = new Set(favs.map(f => `${f.source_id}:${f.item_id}`));
+    }
+
+    /** Every loaded programme of an EPG channel. */
+    getChannelProgrammes(channelId) {
+        return this.programmesByChannel?.get(channelId) || [];
     }
 
     /**
@@ -290,8 +318,7 @@ class EpgGuide {
         const nowTime = now.getTime();
 
         // Filter programs for this channel
-        const current = this.programmes.find(p => {
-            if (p.channelId !== epgChannel.id) return false;
+        const current = this.getChannelProgrammes(epgChannel.id).find(p => {
             const start = new Date(p.start).getTime();
             const stop = new Date(p.stop).getTime();
             return nowTime >= start && nowTime < stop;
@@ -564,8 +591,7 @@ class EpgGuide {
         // Get programs if EPG data exists
         let channelProgrammes = [];
         if (epgChannel) {
-            channelProgrammes = this.programmes
-                .filter(p => p.channelId === epgChannel.id)
+            channelProgrammes = this.getChannelProgrammes(epgChannel.id)
                 .filter(p => {
                     const start = new Date(p.start);
                     const stop = new Date(p.stop);

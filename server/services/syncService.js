@@ -4,11 +4,18 @@ const xtreamApi = require('./xtreamApi');
 const m3uParser = require('./m3uParser');
 const epgParser = require('./epgParser');
 const { randomUUID } = require('node:crypto');
+const diagnostics = require('./diagnostics');
 
 // Sync tracking
 const activeSyncs = new Set(); // sourceId
 const activeEpgSyncs = new Set();
 const epgSourceGenerations = new Map();
+
+// A fresh list this much smaller than the stored one looks like a provider hiccup, not a real
+// change, so the stored list is kept. Lists under the minimum may legitimately swing that much.
+const SUSPICIOUS_SHRINK = 0.5;
+const SHRINK_GUARD_MINIMUM = 20;
+const pendingShrinks = new Map(); // `${sourceId}:${type}` -> size of the list we refused
 
 class SyncService {
     constructor() {
@@ -149,11 +156,13 @@ class SyncService {
             }
 
             this.updateSyncStatus(sourceId, 'all', 'success');
+            diagnostics.record('sync-finished', { title: source.name, outcome: 'success' });
             console.log(`[Sync] Completed sync for source ${source.name}`);
 
         } catch (err) {
             console.error(`[Sync] Failed sync for source ${sourceId}:`, err);
             this.updateSyncStatus(sourceId, 'all', 'error', err.message);
+            diagnostics.record('sync-failed', { title: (await sources.getById(sourceId).catch(() => null))?.name, outcome: 'error', reason: err.message });
         } finally {
             activeSyncs.delete(sourceId);
         }
@@ -180,37 +189,29 @@ class SyncService {
      */
     async syncXtream(source) {
         const api = xtreamApi.createFromSource(source);
-        const db = getDb();
+        const problems = [];
 
-        // 1. Live Categories
-        console.log(`[Sync] Fetching Live Categories for ${source.name}`);
-        const liveCats = await api.getLiveCategories();
-        await this.saveCategories(source.id, 'live', liveCats);
+        // Each list is fetched in full before anything is written, and one failing leaves the others
+        // to refresh: whatever could not be refreshed stays as it was.
+        const refresh = async (label, type, getCategories, getItems) => {
+            try {
+                console.log(`[Sync] Fetching ${label} for ${source.name}`);
+                const categories = await getCategories();
+                const items = await getItems();
+                if (!Array.isArray(items)) throw new Error('the provider sent an unexpected response');
+                const held = this.holdList(source.id, type, items.length, this.countItems(source.id, type));
+                await this.saveCategories(source.id, type, categories);
+                await this.saveStreams(source.id, type, items, { skipPurge: Boolean(held) });
+                if (held) problems.push(`${label}: ${held}`);
+            } catch (error) {
+                console.warn(`[Sync] ${label} refresh failed for ${source.name}, keeping the stored list:`, error.message);
+                problems.push(`${label}: ${error.message}`);
+            }
+        };
 
-        // 2. Live Streams
-        console.log(`[Sync] Fetching Live Streams for ${source.name}`);
-        const liveStreams = await api.getLiveStreams();
-        await this.saveStreams(source.id, 'live', liveStreams);
-
-        // 3. VOD Categories
-        console.log(`[Sync] Fetching VOD Categories for ${source.name}`);
-        const vodCats = await api.getVodCategories();
-        await this.saveCategories(source.id, 'movie', vodCats);
-
-        // 4. VOD Streams
-        console.log(`[Sync] Fetching VOD Streams for ${source.name}`);
-        const vodStreams = await api.getVodStreams();
-        await this.saveStreams(source.id, 'movie', vodStreams);
-
-        // 5. Series Categories
-        console.log(`[Sync] Fetching Series Categories for ${source.name}`);
-        const seriesCats = await api.getSeriesCategories();
-        await this.saveCategories(source.id, 'series', seriesCats);
-
-        // 6. Series
-        console.log(`[Sync] Fetching Series for ${source.name}`);
-        const series = await api.getSeries();
-        await this.saveStreams(source.id, 'series', series);
+        await refresh('live channels', 'live', () => api.getLiveCategories(), () => api.getLiveStreams());
+        await refresh('movies', 'movie', () => api.getVodCategories(), () => api.getVodStreams());
+        await refresh('series', 'series', () => api.getSeriesCategories(), () => api.getSeries());
 
         // 7. EPG (Xmltv)
         // Try to fetch XMLTV if available
@@ -221,6 +222,35 @@ class SyncService {
         } catch (e) {
             console.warn('[Sync] XMLTV fetch failed, skipping EPG sync for now:', e.message);
         }
+
+        if (problems.length > 0) throw new Error(`Previous list kept for ${problems.join('; ')}`);
+    }
+
+    countItems(sourceId, type) {
+        return getDb().prepare('SELECT COUNT(*) AS total FROM playlist_items WHERE source_id = ? AND type = ?').get(sourceId, type).total;
+    }
+
+    /**
+     * Decides whether a fresh list may replace the stored one.
+     * A much smaller list is held back, so a provider sending a partial list cannot wipe a good one.
+     * If the next refresh sends about the same size again, the change is real and goes through.
+     * @returns {string|null} why the list was held back, or null when it may replace the stored one
+     */
+    holdList(sourceId, type, incoming, stored) {
+        const key = `${sourceId}:${type}`;
+        if (stored < SHRINK_GUARD_MINIMUM ? incoming > 0 || stored === 0 : incoming >= stored * SUSPICIOUS_SHRINK) {
+            pendingShrinks.delete(key);
+            return null;
+        }
+        if (incoming === 0) return 'the provider sent an empty list';
+        const refused = pendingShrinks.get(key);
+        if (refused !== undefined && Math.abs(incoming - refused) <= Math.max(5, refused * 0.1)) {
+            console.log(`[Sync] Accepting smaller ${type} list for source ${sourceId}: ${incoming} of ${stored} items, seen twice`);
+            pendingShrinks.delete(key);
+            return null;
+        }
+        pendingShrinks.set(key, incoming);
+        return `the provider sent only ${incoming} of ${stored} items (refresh again to accept this list)`;
     }
 
     /**
@@ -627,6 +657,7 @@ class SyncService {
 
         logMemory();
 
+        const stored = this.countItems(source.id, 'live');
         const allGroups = new Set();
         const allSyncedIds = new Set(); // Collect IDs across all batches
         let totalChannels = 0;
@@ -667,8 +698,9 @@ class SyncService {
         console.log(`[Sync] M3U Parsed: ${totalChannels} channels, ${allGroups.size} groups`);
         logMemory();
 
-        // Purge stale items after all batches are complete
-        if (allSyncedIds.size > 0) {
+        // Purge stale items after all batches are complete, unless the list looks incomplete
+        const held = this.holdList(source.id, 'live', allSyncedIds.size, stored);
+        if (allSyncedIds.size > 0 && !held) {
             await this.purgeStaleItems(source.id, 'live', allSyncedIds);
         }
 
@@ -680,6 +712,7 @@ class SyncService {
         }));
 
         await this.saveCategories(source.id, 'live', categories);
+        if (held) throw new Error(`Previous list kept for live channels: ${held}`);
         console.log(`[Sync] M3U sync complete for ${source.name}`);
     }
 

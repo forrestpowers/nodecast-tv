@@ -150,9 +150,9 @@ class App {
         // Initialize home page first (it's needed for channel list)
         await this.pages.home.init();
 
-        // Preload EPG data in background (non-blocking)
+        // Preload what is on now in the background (non-blocking)
         // This ensures EPG info is available on Live TV page without visiting Guide first
-        this.epgGuide.loadEpg().catch(err => {
+        this.epgGuide.loadNowPlaying().catch(err => {
             console.warn('Background EPG load failed:', err.message);
         });
 

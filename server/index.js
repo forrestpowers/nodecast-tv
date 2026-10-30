@@ -1,4 +1,5 @@
 const express = require('express');
+const compression = require('compression');
 require('dotenv').config();
 const path = require('path');
 const passport = require('passport');
@@ -21,6 +22,8 @@ const trustProxy = process.env.TRUST_PROXY;
 app.set('trust proxy', trustProxy === 'true' ? true : trustProxy === 'false' ? false : trustProxy || 'loopback, linklocal, uniquelocal');
 
 // Middleware
+// JSON and page assets only: gzip would hold back video and Server-Sent Events in its buffer.
+app.use(compression({ filter: (req, res) => /json|javascript|text\/(html|css|plain)|svg/.test(String(res.getHeader('Content-Type'))) }));
 app.use(express.json({ limit: '50mb' }));
 
 // Initialize Passport
@@ -213,6 +216,7 @@ app.use('/api/subtitle', require('./routes/subtitle'));
 app.use('/api/settings', require('./routes/settings'));
 app.use('/api/history', require('./routes/history'));
 app.use('/api/openwebif', require('./routes/openwebif'));
+app.use('/api/diagnostics', require('./routes/diagnostics'));
 
 // SPA fallback - serve index.html for all non-API routes
 app.get('*', (req, res) => {

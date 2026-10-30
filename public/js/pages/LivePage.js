@@ -15,7 +15,7 @@ class LivePage {
 
         // Silently fetch EPG data for sidebar info
         try {
-            await this.app.epgGuide.fetchEpgData();
+            await this.app.epgGuide.loadNowPlaying();
 
             // Clear cache so we don't get stale "null" results from initial render
             this.app.channelList.clearProgramInfoCache();

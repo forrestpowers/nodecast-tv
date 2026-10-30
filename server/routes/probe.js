@@ -1,5 +1,7 @@
 const { ProbeLeases, parseProbeLease, requestCancellation, cancelled } = require('../services/probeLeases');
 const probeLeases = new ProbeLeases();
+const { providerSlots, playbackKey } = require('../services/providerSlots');
+const { HTTP_RECONNECT_ARGS, PROVIDER_RETRY_DELAY_MS, isProviderRejection } = require('../services/ffmpegNetwork');
 const { parseProgram, selectProgramStreams } = require('../services/mpegTsProgram');
 const { redactUrl, redactText, validateHttpUrl, FFMPEG_PROTOCOL_WHITELIST } = require('../services/urlSecurity');
 const express = require('express');
@@ -32,16 +34,13 @@ const BROWSER_AUDIO_CODECS = ['aac', 'mp3', 'opus', 'vorbis'];
 /**
  * Probe stream with ffprobe
  */
-function probeStream(url, ffprobePath, userAgent = null, timeout = 15000, signal) {
+function probeStream(url, ffprobePath, userAgent = null, timeout = 15000, signal, holder) {
     return new Promise((resolve, reject) => {
         const args = [
             '-v', 'error',
             '-user_agent', userAgent || 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
             '-multiple_requests', '0',
-            '-reconnect', '1',
-            '-reconnect_streamed', '1',
-            '-reconnect_on_http_error', '4xx,5xx',
-            '-reconnect_delay_max', '10',
+            ...HTTP_RECONNECT_ARGS,
             '-print_format', 'json',
             '-show_streams',
             '-show_programs',
@@ -61,6 +60,8 @@ function probeStream(url, ffprobePath, userAgent = null, timeout = 15000, signal
             proc.kill('SIGKILL');
         };
         const abort = () => stop(cancelled());
+        holder?.track(proc);
+        holder?.onStopped(abort);
         const timer = setTimeout(() => stop(new Error('Probe timeout')), timeout);
         signal?.addEventListener('abort', abort, { once: true });
         if (signal?.aborted) abort();
@@ -170,20 +171,32 @@ router.get('/', async (req, res) => {
             const cached = probeCache.get(cacheKey);
             if (cached && Date.now() - cached.timestamp < CACHE_TTL) return cached.result;
             console.log(`[Probe] Probing: ${redactUrl(url)}...`);
+            // The probe is a provider connection too: it waits for this player's old stream to go.
+            let holder;
             try {
-                const data = await probeStream(url, ffprobePath, ua, req.app.locals.probeTimeoutMs || 15000, signal);
+                holder = await providerSlots.acquire(playbackKey(req), { url, keepSameUrl: true });
+                const probe = () => probeStream(url, ffprobePath, ua, req.app.locals.probeTimeoutMs || 15000, signal, holder);
+                const data = await probe().catch(async error => {
+                    if (signal.aborted || holder.stopped || !isProviderRejection(error.message)) throw error;
+                    console.warn(`[Probe] Provider rejected the connection, retrying once: ${redactText(error.message)}`);
+                    await new Promise(resolve => setTimeout(resolve, PROVIDER_RETRY_DELAY_MS));
+                    if (signal.aborted || holder.stopped) throw cancelled();
+                    return probe();
+                });
                 if (signal.aborted) throw cancelled();
                 const analysis = analyzeProbeResult(data, url, program);
                 probeCache.set(cacheKey, { result: analysis, timestamp: Date.now() });
                 return analysis;
             } catch (error) {
-                if (signal.aborted || error.name === 'AbortError') throw cancelled();
+                if (signal.aborted || error.name === 'AbortError' || holder?.stopped) throw cancelled();
                 const message = redactText(error.message);
                 console.error('[Probe] Failed:', message);
                 const fallback = { video: 'unknown', audio: 'unknown', container: 'unknown', compatible: false,
                     needsRemux: false, needsTranscode: true, error: message };
                 probeCache.set(cacheKey, { result: fallback, timestamp: Date.now() - (CACHE_TTL - 30000) });
                 return fallback;
+            } finally {
+                holder?.finish();
             }
         });
         if (!cancellation.signal.aborted && !res.destroyed) res.json(result);

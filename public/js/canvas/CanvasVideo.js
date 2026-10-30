@@ -272,6 +272,7 @@ class CanvasVideo {
         if (live) query.set('live', '1');
         else if (seek > 0) query.set('seek', seek.toFixed(3));
         if (program != null) query.set('program', String(program));
+        if (window.PlaybackProbe) query.set('client', PlaybackProbe.clientId);
         return (engine === 'webrtc' ? '/api/canvas/webrtc/session?' : '/api/canvas/stream?') + query;
     }
 
@@ -365,6 +366,7 @@ class CanvasVideo {
         const position = options.live ? 0 : this.getCurrentTime();
         const retry = (changes, reason) => {
             console.warn(`[CanvasVideo] ${reason}:`, message);
+            window.PlaybackReport?.send({ kind: 'fallback', engine: options.engine, video: options.videoMode, reason: `${reason}: ${message}` });
             Object.assign(options, changes);
             options.onModeChange?.({ engine: options.engine, videoMode: options.videoMode, audioMode: options.audioMode, deinterlace: options.deinterlace });
             this.restart(position);
@@ -397,6 +399,7 @@ class CanvasVideo {
 
     fail(message) {
         console.error('[CanvasVideo]', message);
+        window.PlaybackReport?.send({ kind: 'error', engine: this.options?.engine, video: this.options?.videoMode, reason: message });
         this.teardownPipeline();
         this.errorValue = { code: 4, message };
         this.emit('error');

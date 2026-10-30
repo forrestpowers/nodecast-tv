@@ -7,6 +7,7 @@ class SettingsPage {
         this.app = app;
         this.tabs = document.querySelectorAll('.tabs .tab');
         this.tabContents = document.querySelectorAll('.tab-content');
+        this.diagnostics = new DiagnosticsPanel();
 
         this.init();
     }
@@ -543,9 +544,15 @@ class SettingsPage {
         if (tabName === 'transcode') {
             this.loadHardwareInfo();
         }
+
+        // Diagnostics refreshes for as long as its tab is open
+        if (tabName === 'diagnostics') this.diagnostics.start();
+        else this.diagnostics.stop();
     }
 
     async show() {
+        if (document.getElementById('tab-diagnostics')?.classList.contains('active')) this.diagnostics.start();
+
         // Show users tab for admin
         if (this.app.currentUser && this.app.currentUser.role === 'admin') {
             const usersTab = document.getElementById('users-tab');
@@ -653,6 +660,7 @@ class SettingsPage {
     }
 
     hide() {
+        this.diagnostics.stop();
         // Page is hidden
     }
 }

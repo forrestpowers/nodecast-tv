@@ -1,4 +1,5 @@
 const { parseProgram } = require('./mpegTsProgram');
+const { HTTP_RECONNECT_ARGS } = require('./ffmpegNetwork');
 const { FFMPEG_PROTOCOL_WHITELIST } = require('./urlSecurity');
 
 /**
@@ -161,10 +162,7 @@ function inputArgs(url, { userAgent, seek = 0, live = false, realtime = false, h
         '-fflags', '+genpts+discardcorrupt',
         '-err_detect', 'ignore_err',
         '-multiple_requests', '0',
-        '-reconnect', '1',
-        '-reconnect_streamed', '1',
-        '-reconnect_on_http_error', '4xx,5xx',
-        '-reconnect_delay_max', '10',
+        ...HTTP_RECONNECT_ARGS,
         // Seeking needs Range requests; otherwise avoid them for providers that reject them.
         ...(seeking ? ['-ss', String(seek)] : ['-seekable', '0']),
         // Read at the source's own pace (for a server that relays in real time, not a client that buffers).

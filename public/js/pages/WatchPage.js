@@ -373,6 +373,7 @@ class WatchPage {
 
         // Ensure it's visible
         this.transcodeStatusEx.classList.remove('hidden');
+        if (mode !== 'error') window.PlaybackReport?.plan(text || mode, this.content?.title);
     }
 
     /**
@@ -703,7 +704,7 @@ class WatchPage {
 
     getRemuxUrl(url, audioCodecs = [], program = null) {
         const selection = program == null ? '' : '&program=' + encodeURIComponent(program);
-        return `/api/remux?url=${encodeURIComponent(url)}&audioCodecs=${encodeURIComponent(audioCodecs.join(','))}${selection}`;
+        return `/api/remux?url=${encodeURIComponent(url)}&audioCodecs=${encodeURIComponent(audioCodecs.join(','))}${selection}&client=${PlaybackProbe.clientId}`;
     }
 
     stop() {

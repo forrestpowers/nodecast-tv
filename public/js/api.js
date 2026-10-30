@@ -156,6 +156,10 @@ const API = {
     },
 
     // Users (admin only)
+    diagnostics: {
+        get: () => API.request('GET', '/diagnostics')
+    },
+
     users: {
         getAll: () => API.request('GET', '/auth/users'),
         create: (data) => API.request('POST', '/auth/users', data),

@@ -90,6 +90,7 @@ function initSchema() {
         );
         CREATE INDEX IF NOT EXISTS idx_epg_channel_time ON epg_programs(channel_id, start_time, end_time);
         CREATE INDEX IF NOT EXISTS idx_epg_cleanup ON epg_programs(end_time); -- For deleting old programs
+        CREATE INDEX IF NOT EXISTS idx_epg_source_time ON epg_programs(source_id, end_time, start_time); -- For the guide's time window
     `);
 
     // Sync Status

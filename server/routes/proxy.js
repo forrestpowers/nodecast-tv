@@ -335,8 +335,10 @@ router.get('/epg/:sourceId', async (req, res) => {
 
         // Time window: 24 hours ago to 24 hours from now
         // This prevents returning millions of rows and crashing the server/browser
-        const windowStart = Date.now() - (24 * 60 * 60 * 1000); // -24 hours
-        const windowEnd = Date.now() + (24 * 60 * 60 * 1000);   // +24 hours
+        // Live TV only needs what is on now and next (?window=now): the rest is for the TV Guide page
+        const nowOnly = req.query.window === 'now';
+        const windowStart = nowOnly ? Date.now() : Date.now() - (24 * 60 * 60 * 1000); // -24 hours
+        const windowEnd = Date.now() + ((nowOnly ? 4 : 24) * 60 * 60 * 1000);          // +24 hours
 
         // Fetch programs within the time window
         let programsQuery = `
@@ -506,62 +508,6 @@ router.get('/xtream/:sourceId/stream/:streamId/:type?', async (req, res) => {
         console.error('Stream URL error:', err);
         res.status(500).json({ error: err.message });
     }
-});
-
-/**
- * Fetch and parse EPG (with file-based caching)
- * GET /api/proxy/epg/:sourceId
- * Query params:
- *   - refresh=1  Force refresh, bypass cache
- *   - maxAge=N   Max cache age in hours (default 24)
- */
-router.get('/epg/:sourceId', async (req, res) => {
-    try {
-        const sourceId = req.params.sourceId;
-        const source = await sources.getById(sourceId);
-        if (!source || (source.type !== 'epg' && source.type !== 'xtream')) {
-            return res.status(404).json({ error: 'Valid EPG source not found' });
-        }
-
-        const forceRefresh = req.query.refresh === '1';
-        const maxAgeHours = parseInt(req.query.maxAge) || DEFAULT_MAX_AGE_HOURS;
-        const maxAgeMs = maxAgeHours * 60 * 60 * 1000;
-
-        // Check file cache (unless force refresh)
-        if (!forceRefresh) {
-            const cached = cache.get('epg', sourceId, 'data', maxAgeMs);
-            if (cached) {
-                return res.json(cached);
-            }
-        }
-
-        // Fetch fresh data
-        let url = source.url;
-        if (source.type === 'xtream') {
-            const api = xtreamApi.createFromSource(source);
-            url = api.getXmltvUrl();
-        }
-
-        const data = await epgParser.fetchAndParse(url);
-
-        // Store in file cache
-        cache.set('epg', sourceId, 'data', data);
-
-        res.json(data);
-    } catch (err) {
-        console.error('EPG proxy error:', err);
-        res.status(500).json({ error: err.message });
-    }
-});
-
-/**
- * Clear cache for a source
- * DELETE /api/proxy/cache/:sourceId
- */
-router.delete('/cache/:sourceId', (req, res) => {
-    const sourceId = req.params.sourceId;
-    cache.clearSource(sourceId);
-    res.json({ success: true });
 });
 
 /**

@@ -22,6 +22,7 @@ class ChannelList {
         this.currentChannel = null;
         this.sources = [];
         this.isLoading = false;
+        this.lastGoodLists = new Map(); // sourceId -> { groups, channels }
         this.renderedChannels = [];
 
         this.loadCollapsedState();
@@ -718,11 +719,9 @@ class ChannelList {
         try {
             this.container.innerHTML = '<div class="loading"></div>';
 
-            if (type === 'xtream') {
-                await this.loadXtreamChannels(parseInt(id));
-            } else if (type === 'm3u') {
-                await this.loadM3uChannels(parseInt(id));
-            }
+            const list = await this.fetchSourceChannels({ id: parseInt(id), type, name: sourceValue });
+            this.groups = list.groups;
+            this.channels = list.channels;
 
             // Load hidden items and favorites
             await Promise.all([
@@ -743,23 +742,18 @@ class ChannelList {
      * Load channels from all enabled sources
      */
     async loadAllChannels() {
-        this.channels = [];
-        this.groups = [];
-
         try {
             this.container.innerHTML = '<div class="loading"></div>';
 
-            const xtreamSources = this.sources.filter(s => s.type === 'xtream' && s.enabled);
-            const m3uSources = this.sources.filter(s => s.type === 'm3u' && s.enabled);
-            console.log('[ChannelList] loadAllChannels: xtream=', xtreamSources.length, 'm3u=', m3uSources.length);
+            const enabled = this.sources.filter(s => (s.type === 'xtream' || s.type === 'm3u') && s.enabled);
+            console.log('[ChannelList] loadAllChannels:', enabled.length, 'sources');
 
-            for (const source of xtreamSources) {
-                await this.loadXtreamChannels(source.id, true);
-            }
-
-            for (const source of m3uSources) {
-                await this.loadM3uChannels(source.id, true);
-            }
+            const lists = await Promise.all(enabled.map(source => this.fetchSourceChannels(source).catch(err => {
+                console.warn(`[ChannelList] Could not load ${source.name}:`, err.message);
+                return { groups: [], channels: [] };
+            })));
+            this.groups = lists.flatMap(list => list.groups);
+            this.channels = lists.flatMap(list => list.channels);
 
             await Promise.all([
                 this.loadHiddenItems(),
@@ -772,54 +766,59 @@ class ChannelList {
     }
 
     /**
+     * Fetch one source's channels. If that fails, the list it last gave stays on screen.
+     */
+    async fetchSourceChannels(source) {
+        try {
+            const list = source.type === 'xtream' ? await this.fetchXtreamChannels(source.id) : await this.fetchM3uChannels(source.id);
+            this.lastGoodLists.set(source.id, list);
+            return list;
+        } catch (err) {
+            const previous = this.lastGoodLists.get(source.id);
+            if (!previous) throw err;
+            console.warn(`[ChannelList] Keeping the previous list for ${source.name}:`, err.message);
+            return previous;
+        }
+    }
+
+    /**
      * Load Xtream channels
      */
-    async loadXtreamChannels(sourceId, append = false) {
-        if (!append) {
-            this.channels = [];
-            this.groups = [];
-        }
-
+    async fetchXtreamChannels(sourceId) {
         const categories = await API.proxy.xtream.liveCategories(sourceId);
         const streams = await API.proxy.xtream.liveStreams(sourceId);
 
         // Map categories to groups
-        const categoryGroups = categories.map(cat => ({
+        const groups = categories.map(cat => ({
             id: `xtream_${sourceId}_${cat.category_id}`,
             name: cat.category_name,
             sourceId,
             sourceType: 'xtream'
         }));
-
-        this.groups = this.groups.concat(categoryGroups);
+        // Use string keys to handle type mismatches (number vs string category_id)
+        const categoryNames = new Map(categories.map(c => [String(c.category_id), c.category_name]));
 
         // Map streams to channels
-        const channelList = streams.map(stream => ({
+        const channels = streams.map(stream => ({
             id: `xtream_${sourceId}_${stream.stream_id}`,
             streamId: stream.stream_id,
             name: stream.name,
             tvgId: stream.epg_channel_id,
             tvgLogo: stream.stream_icon,
             groupId: `xtream_${sourceId}_${stream.category_id}`,
-            // Use string comparison to handle type mismatches (number vs string category_id)
-            groupTitle: categories.find(c => String(c.category_id) === String(stream.category_id))?.category_name || 'Uncategorized',
+            groupTitle: categoryNames.get(String(stream.category_id)) || 'Uncategorized',
             sourceId,
             sourceType: 'xtream'
         }));
 
-        this.channels = this.channels.concat(channelList);
+        return { groups, channels };
     }
 
     /**
      * Load M3U channels
      * Now uses unified Xtream-style API endpoints (backend supports both source types)
      */
-    async loadM3uChannels(sourceId, append = false) {
-        if (!append) {
-            this.channels = [];
-            this.groups = [];
-        }
-
+    async fetchM3uChannels(sourceId) {
         const source = await API.sources.getById(sourceId);
 
         // Use Xtream API endpoints - backend now supports M3U sources too
@@ -827,17 +826,16 @@ class ChannelList {
         const streams = await API.proxy.xtream.liveStreams(sourceId);
 
         // Map categories to groups (keeping m3u sourceType for downstream compatibility)
-        const m3uGroups = categories.map(cat => ({
+        const groups = categories.map(cat => ({
             id: `m3u_${sourceId}_${cat.category_id}`,
             name: cat.category_name,
             sourceId,
             sourceType: 'm3u'
         }));
-
-        this.groups = this.groups.concat(m3uGroups);
+        const categoryNames = new Map(categories.map(c => [String(c.category_id), c.category_name]));
 
         // Map streams to channels
-        const channelList = streams.map(stream => ({
+        const channels = streams.map(stream => ({
             id: `m3u_${sourceId}_${stream.stream_id}`,
             streamId: stream.stream_id,
             name: stream.name,
@@ -848,12 +846,12 @@ class ChannelList {
             zapBeforeStreaming: source?.zapBeforeStreaming || false,
             zapDelay: source?.zapDelay ?? 1500,
             groupId: `m3u_${sourceId}_${stream.category_id}`,
-            groupTitle: categories.find(c => String(c.category_id) === String(stream.category_id))?.category_name || 'Uncategorized',
+            groupTitle: categoryNames.get(String(stream.category_id)) || 'Uncategorized',
             sourceId,
             sourceType: 'm3u'
         }));
 
-        this.channels = this.channels.concat(channelList);
+        return { groups, channels };
     }
 
     /**

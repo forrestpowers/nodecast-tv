@@ -1318,6 +1318,46 @@ body:not(.is-admin) [data-admin-only] {
   display: none !important;
 }
 
+/* Settings > Diagnostics */
+.diagnostics-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-md);
+  margin-bottom: var(--space-md);
+}
+
+.diagnostics-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm) var(--space-lg);
+  color: var(--color-text-secondary);
+}
+
+.diagnostics-table-wrap {
+  overflow-x: auto;
+}
+
+.diagnostics-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8125rem;
+}
+
+.diagnostics-table th,
+.diagnostics-table td {
+  padding: 6px var(--space-sm);
+  border-bottom: 1px solid var(--color-border);
+  text-align: left;
+  vertical-align: top;
+}
+
+.diagnostics-table th {
+  color: var(--color-text-muted);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
 .source-access {
   font-size: 0.75rem;
   color: var(--color-text-secondary);

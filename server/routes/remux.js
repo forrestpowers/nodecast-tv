@@ -1,4 +1,5 @@
 const { parseProgram } = require('../services/mpegTsProgram');
+const { providerSlots, playbackKey } = require('../services/providerSlots');
 const { redactUrl, redactText, validateHttpUrl } = require('../services/urlSecurity');
 const express = require('express');
 const router = express.Router();
@@ -84,6 +85,14 @@ router.get('/', async (req, res) => {
 
     const ffmpegPath = req.app.locals.ffmpegPath || 'ffmpeg';
 
+    let holder;
+    try {
+        holder = await providerSlots.acquire(playbackKey(req), { url: safeUrl, stop: () => res.destroy() });
+    } catch (error) {
+        return res.status(409).json({ error: error.message });
+    }
+    if (res.destroyed) return holder.finish();
+
     // Get User-Agent from settings
     const settings = await db.settings.get();
     const userAgent = db.getUserAgent(settings);
@@ -147,8 +156,10 @@ router.get('/', async (req, res) => {
         ffmpeg = spawn(ffmpegPath, args);
     } catch (spawnErr) {
         console.error('[Remux] Failed to spawn FFmpeg:', redactText(spawnErr.message));
+        holder.finish();
         return res.status(500).json({ error: 'FFmpeg spawn failed', details: spawnErr.message });
     }
+    holder.track(ffmpeg);
 
     // Set headers for fragmented MP4
     res.setHeader('Content-Type', 'video/mp4');
@@ -170,6 +181,7 @@ router.get('/', async (req, res) => {
     res.on('close', () => {
         console.log('[Remux] Client disconnected, killing FFmpeg process');
         ffmpeg.kill('SIGKILL');
+        holder.finish();
     });
 
     // Handle process exit

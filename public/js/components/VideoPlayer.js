@@ -1005,6 +1005,7 @@ class VideoPlayer {
 
         // Ensure it's visible
         el.classList.remove('hidden');
+        if (mode !== 'error') window.PlaybackReport?.plan(text || mode, this.currentChannel?.name);
     }
 
     /**
@@ -1059,8 +1060,8 @@ class VideoPlayer {
                     let upcoming = [];
                     if (epgChannel) {
                         const now = Date.now();
-                        upcoming = epgGuide.programmes
-                            .filter(p => p.channelId === epgChannel.id && new Date(p.start).getTime() > now)
+                        upcoming = epgGuide.getChannelProgrammes(epgChannel.id)
+                            .filter(p => new Date(p.start).getTime() > now)
                             .slice(0, 5)
                             .map(p => ({
                                 title: p.title,
@@ -1146,7 +1147,7 @@ class VideoPlayer {
      */
     getRemuxUrl(url, audioCodecs = [], program = null) {
         const selection = program == null ? '' : '&program=' + encodeURIComponent(program);
-        return `/api/remux?url=${encodeURIComponent(url)}&audioCodecs=${encodeURIComponent(audioCodecs.join(','))}${selection}`;
+        return `/api/remux?url=${encodeURIComponent(url)}&audioCodecs=${encodeURIComponent(audioCodecs.join(','))}${selection}&client=${PlaybackProbe.clientId}`;
     }
 
     /**

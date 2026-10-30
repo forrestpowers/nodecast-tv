@@ -140,13 +140,16 @@ class HomePage {
             }
 
             // Match favorites to channel data
+            const channelIndex = new Map();
+            for (const ch of channelList.channels) {
+                channelIndex.set(`${ch.sourceId}:${ch.id}`, ch);
+                channelIndex.set(`${ch.sourceId}:${ch.streamId}`, ch);
+            }
+
             const channels = [];
             for (const fav of favorites) {
                 // Find channel in loaded channel list
-                const channel = channelList.channels.find(ch =>
-                    String(ch.sourceId) === String(fav.source_id) &&
-                    (String(ch.id) === String(fav.item_id) || String(ch.streamId) === String(fav.item_id))
-                );
+                const channel = channelIndex.get(`${fav.source_id}:${fav.item_id}`);
                 if (channel) {
                     channels.push({ ...channel, favoriteId: fav.id });
                 }

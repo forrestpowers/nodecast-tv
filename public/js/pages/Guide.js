@@ -22,7 +22,7 @@ class GuidePage {
         }
 
         // Only load EPG data if not already loaded
-        if (!this.app.epgGuide.programmes || this.app.epgGuide.programmes.length === 0) {
+        if (!this.app.epgGuide.fullGuideLoaded) {
             await this.app.epgGuide.loadEpg();
         } else {
             // Just re-render with existing data (updates time position)

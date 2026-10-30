@@ -11,7 +11,7 @@
   <meta name="description" content="Stream live TV, movies, and series with EPG support">
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
   <link rel="apple-touch-icon" href="/img/tesplayer-touch-icon.png">
-  <link rel="stylesheet" href="css/main.css?v=2.2.7-tp3">
+  <link rel="stylesheet" href="css/main.css?v=2.2.7-tp4">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@800&display=swap"
@@ -422,6 +422,7 @@
             <button class="tab" data-tab="transcode" data-admin-only>Transcoding</button>
             <button class="tab" data-tab="content">Manage Content</button>
             <button class="tab" data-tab="users" id="users-tab" style="display:none;">Users</button>
+            <button class="tab" data-tab="diagnostics" data-admin-only>Diagnostics</button>
           </div>
 
           <!-- Sources Tab -->
@@ -835,6 +836,15 @@
             </div>
           </div>
 
+          <!-- Diagnostics Tab (Admin Only) -->
+          <div id="tab-diagnostics" class="tab-content">
+            <div class="diagnostics-header">
+              <p class="hint">Which path each player took and why. Events are kept in memory until the server restarts.</p>
+              <button class="btn btn-sm btn-secondary" id="diagnostics-refresh">Refresh</button>
+            </div>
+            <div id="diagnostics-content"><p class="hint">Loading...</p></div>
+          </div>
+
           <!-- Users Tab (Admin Only) -->
           <div id="tab-users" class="tab-content">
             <div class="settings-section">
@@ -1169,29 +1179,31 @@
 
   <!-- JavaScript -->
   <script src="/js/icons.js"></script>
-  <script src="/js/api.js?v=auth-2"></script>
+  <script src="/js/api.js?v=auth-2-tp1"></script>
   <script src="/js/components/PlaybackSessions.js?v=1"></script>
   <script src="/js/components/VodDuration.js?v=1"></script>
   <script src="/js/components/CaptionTracks.js?v=4"></script>
   <script src="/js/components/HlsAudioRecovery.js?v=1"></script>
-  <script src="/js/components/PlaybackProbe.js?v=2"></script>
+  <script src="/js/components/PlaybackProbe.js?v=3"></script>
+  <script src="/js/components/PlaybackReport.js?v=1"></script>
   <script src="/js/components/PlayerFullscreen.js?v=1"></script>
   <script src="/js/canvas/webcodecs-pipeline.js?v=2"></script>
   <script src="/js/canvas/jsmpeg-pipeline.js?v=3"></script>
   <script src="/js/canvas/webrtc-pipeline.js?v=7"></script>
-  <script src="/js/canvas/CanvasVideo.js?v=5"></script>
-  <script src="/js/components/VideoPlayer.js?v=10"></script>
-  <script src="/js/components/ChannelList.js?v=4"></script>
+  <script src="/js/canvas/CanvasVideo.js?v=6"></script>
+  <script src="/js/components/VideoPlayer.js?v=11"></script>
+  <script src="/js/components/ChannelList.js?v=5"></script>
   <script src="/js/components/SourceManager.js?v=5"></script>
-  <script src="/js/components/EpgGuide.js?v=2"></script>
-  <script src="/js/pages/HomePage.js?v=3"></script>
-  <script src="/js/pages/LivePage.js?v=3"></script>
-  <script src="/js/pages/Guide.js?v=2"></script>
+  <script src="/js/components/EpgGuide.js?v=3"></script>
+  <script src="/js/pages/HomePage.js?v=4"></script>
+  <script src="/js/pages/LivePage.js?v=4"></script>
+  <script src="/js/pages/Guide.js?v=3"></script>
   <script src="/js/pages/MoviesPage.js?v=4"></script>
   <script src="/js/pages/SeriesPage.js?v=1"></script>
-  <script src="/js/pages/Settings.js?v=2"></script>
-  <script src="/js/pages/WatchPage.js?v=12"></script>
-  <script src="/js/app.js?v=6"></script>
+  <script src="/js/components/DiagnosticsPanel.js?v=1"></script>
+  <script src="/js/pages/Settings.js?v=3"></script>
+  <script src="/js/pages/WatchPage.js?v=13"></script>
+  <script src="/js/app.js?v=7"></script>
 
 </body>
 
