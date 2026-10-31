@@ -266,11 +266,12 @@ h4 {
   transform: rotate(-45deg) translate(7px, -7px);
 }
 
+/* Spacing follows the window: the Tesla browser is 773 to 1410 px wide, and changes as the map opens */
 .nav-link {
   display: flex;
   align-items: center;
   gap: var(--space-sm);
-  padding: var(--space-sm) var(--space-md);
+  padding: var(--space-sm) clamp(8px, 1.4vw, var(--space-md));
   color: var(--color-text-secondary);
   text-decoration: none;
   border-radius: var(--radius-md);

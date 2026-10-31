@@ -24,6 +24,8 @@ const detect = (signals) => {
 const LINUX_CHROMIUM = 'Mozilla/5.0 (X11; GNU/Linux) AppleWebKit/537.36 (KHTML, like Gecko) Chromium/118.0.5993.88 Chrome/118.0.5993.88 Safari/537.36';
 // Model 3/Y: 1920x1200 panel shown as 1254x784 CSS pixels; touch only, no hover, 4 cores.
 const MODEL_3 = { screenWidth: 1254, screenHeight: 784, devicePixelRatio: 1.53, maxTouchPoints: 10, coarsePointer: true, hoverCapable: false, cpuCores: 4 };
+// Model X: its browser reports a 1410x833 screen.
+const MODEL_X = { screenWidth: 1410, screenHeight: 833, devicePixelRatio: 1, maxTouchPoints: 10, coarsePointer: true, hoverCapable: false, cpuCores: 8 };
 
 test('a Tesla token in the user agent is certain', () => {
     for (const ua of [
@@ -63,4 +65,12 @@ test('ordinary desktops, phones and other browsers are not Teslas', () => {
 
 test('isTeslaBrowser reads the live device signals', () => {
     assert.equal(playback.isTeslaBrowser(), false, 'empty user agent and screen');
+});
+
+test('the Model X screen counts as a car screen', () => {
+    const result = detect({ userAgent: LINUX_CHROMIUM, ...MODEL_X });
+    assert.equal(result.isTesla, true);
+    assert.ok(result.reasons.includes('known-css-screen'));
+    // On its own a screen size proves little: without touch it must still not pass for a car
+    assert.equal(detect({ userAgent: LINUX_CHROMIUM, ...MODEL_X, maxTouchPoints: 0, coarsePointer: false, hoverCapable: true }).isTesla, false);
 });

@@ -33,8 +33,10 @@ test('Movies and Series are out of reach, from the navbar and by address', () =>
     assert.equal(app.currentPage, 'guide', 'other pages still open');
 });
 
-test('navbar labels stay on one line, and the guide grid takes the height that is left', () => {
+test('the navbar scales with the window, and the guide grid takes the height that is left', () => {
     const css = read('css/main.css');
-    assert.match(/\.nav-link \{[^}]*\}/.exec(css)[0], /white-space: nowrap/);
+    const navLink = /\.nav-link \{[^}]*\}/.exec(css)[0];
+    assert.match(navLink, /white-space: nowrap/);
+    assert.match(navLink, /padding: [^;]*clamp\(/, 'spacing follows the window, down to the Model Y at 773 px');
     assert.match(/\.epg-grid \{[^}]*\}/.exec(css)[0], /flex: 1 1 0/);
 });

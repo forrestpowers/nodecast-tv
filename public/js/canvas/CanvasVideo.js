@@ -30,8 +30,8 @@ const CanvasPlayback = {
 
     /**
      * Tesla browser detection, after EVStream's: a Tesla token in the user agent is certain.
-     * Without one, only desktop-Linux Chromium qualifies, scored by the car's screen (1254x784 CSS
-     * pixels; 1920x1200 Model 3/Y or 2200x1300 Model S/X panels), touch without hover, a
+     * Without one, only desktop-Linux Chromium qualifies, scored by the car's screen (1254x784 or
+     * 1410x833 CSS pixels; 1920x1200 Model 3/Y or 2200x1300 Model S/X panels), touch without hover, a
      * fractional pixel ratio and few CPU cores. 3 points or more counts as likely.
      * @returns {{ isTesla: boolean, confidence: 'certain'|'likely'|'unlikely', score: number, reasons: string[] }}
      */
@@ -48,7 +48,7 @@ const CanvasPlayback = {
         const reasons = [];
         let score = 0;
         const add = (reason, points) => { reasons.push(reason); score += points; };
-        if (matches(w, h, [[1254, 784]])) add('known-css-screen', 2.5);
+        if (matches(w, h, [[1254, 784], [1410, 833]])) add('known-css-screen', 2.5);
         if (matches(Math.round(w * ratio), Math.round(h * ratio), [[1920, 1200], [2200, 1300]])) add('known-panel', 1.5);
         if (signals.maxTouchPoints > 0 || signals.coarsePointer) add('touchscreen', 2);
         if (!signals.hoverCapable) add('no-hover', 1);
