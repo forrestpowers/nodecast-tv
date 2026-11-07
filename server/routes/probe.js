@@ -23,13 +23,8 @@ const { spawn } = require('child_process');
  * }
  */
 
-// Probe cache (URL → result)
-const probeCache = new Map();
-const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
-
-// Browser-compatible codecs
-const BROWSER_VIDEO_CODECS = ['h264', 'avc', 'avc1'];
-const BROWSER_AUDIO_CODECS = ['aac', 'mp3', 'opus', 'vorbis'];
+const probeCache = require('../services/probeCache');
+const { classify } = require('../services/streamInfo');
 
 /**
  * Probe stream with ffprobe
@@ -93,19 +88,6 @@ function analyzeProbeResult(probeResult, url, program = null) {
     const audioCodec = audioStream?.codec_name?.toLowerCase() || 'unknown';
     const container = format.format_name?.toLowerCase() || 'unknown';
 
-    // Check codec compatibility
-    const videoOk = BROWSER_VIDEO_CODECS.some(c => videoCodec.includes(c));
-    const audioOk = BROWSER_AUDIO_CODECS.some(c => audioCodec.includes(c));
-
-    // Browser-safe containers
-    // Note: We exclude 'webm' because ffprobe reports MKV as "matroska,webm", 
-    // and H.264/AAC in MKV/WebM is not universally supported. Best to remux to MP4.
-    const BROWSER_CONTAINERS = ['hls', 'mp4', 'mov'];
-    const containerOk = BROWSER_CONTAINERS.some(c => container.includes(c));
-
-    // Check if it's a raw TS stream (not HLS)
-    const isRawTs = (container.includes('mpegts') || url.endsWith('.ts')) && !url.includes('.m3u8');
-
     // Extract subtitle tracks
     const subtitles = streams
         .filter(s => s.codec_type === 'subtitle' && s.codec_name !== 'timed_id3' && s.codec_name !== 'bin_data')
@@ -115,20 +97,6 @@ function analyzeProbeResult(probeResult, url, program = null) {
             title: s.tags?.title || s.tags?.language || `Track ${s.index}`,
             codec: s.codec_name
         }));
-
-    // Determine what processing is needed
-    // 4. MKV files often cause OOM/decoding issues in browser fMP4 remux, 
-    // so we force them to "needsTranscode" which uses HLS (more robust).
-    // The frontend will still use "copy" mode if codecs are compatible.
-    const isMkv = container.includes('matroska') || container.includes('webm') || url.endsWith('.mkv');
-
-    // 1. Incompatible audio/video OR MKV -> Transcode (or HLS Copy)
-    const needsTranscode = !audioOk || !videoOk || isMkv;
-
-    // 2. Compatible audio/video but incompatible container (non-MKV) -> Remux (fMP4 pipe)
-    const needsRemux = !needsTranscode && (!containerOk || isRawTs);
-
-    const compatible = !needsTranscode && !needsRemux;
 
     return {
         video: videoCodec,
@@ -145,15 +113,16 @@ function analyzeProbeResult(probeResult, url, program = null) {
         // B-frames rule out copying into WebRTC (null when unknown)
         hasBFrames: videoStream?.has_b_frames === undefined ? null : Number(videoStream.has_b_frames) > 0,
         container: container,
-        compatible: compatible,
-        needsRemux: needsRemux,
-        needsTranscode: needsTranscode,
+        ...classify({ video: videoCodec, audio: audioCodec, container, url }),
         subtitles: subtitles
     };
 }
 
 router.get('/', async (req, res) => {
     const { url, ua } = req.query;
+    // ?fast=1: answer from the cache or say "pending", never probe. The player then starts the
+    // stream at once (re-encoding everything), and the running stream fills the cache itself.
+    const fast = req.query.fast === '1';
     let program, lease;
     try {
         program = parseProgram(req.query.program);
@@ -163,13 +132,14 @@ router.get('/', async (req, res) => {
     } catch (error) { return res.status(400).json({ error: error.message }); }
 
     const cancellation = requestCancellation(req, res);
-    const cacheKey = JSON.stringify([url, ua || '', program]);
+    const cacheKey = probeCache.key(url, ua, program);
     try {
         const result = await probeLeases.run(req.user?.id ?? null, lease, cancellation.signal, async signal => {
             const ffprobePath = req.app.locals.ffprobePath;
             if (!ffprobePath) return { video: 'unknown', audio: 'unknown', container: 'unknown', compatible: false, needsRemux: false, needsTranscode: true };
             const cached = probeCache.get(cacheKey);
-            if (cached && Date.now() - cached.timestamp < CACHE_TTL) return cached.result;
+            if (cached) return cached;
+            if (fast) return { pending: true };
             console.log(`[Probe] Probing: ${redactUrl(url)}...`);
             // The probe is a provider connection too: it waits for this player's old stream to go.
             let holder;
@@ -185,7 +155,7 @@ router.get('/', async (req, res) => {
                 });
                 if (signal.aborted) throw cancelled();
                 const analysis = analyzeProbeResult(data, url, program);
-                probeCache.set(cacheKey, { result: analysis, timestamp: Date.now() });
+                probeCache.set(cacheKey, analysis);
                 return analysis;
             } catch (error) {
                 if (signal.aborted || error.name === 'AbortError' || holder?.stopped) throw cancelled();
@@ -193,7 +163,7 @@ router.get('/', async (req, res) => {
                 console.error('[Probe] Failed:', message);
                 const fallback = { video: 'unknown', audio: 'unknown', container: 'unknown', compatible: false,
                     needsRemux: false, needsTranscode: true, error: message };
-                probeCache.set(cacheKey, { result: fallback, timestamp: Date.now() - (CACHE_TTL - 30000) });
+                probeCache.set(cacheKey, fallback, { failed: true });
                 return fallback;
             } finally {
                 holder?.finish();

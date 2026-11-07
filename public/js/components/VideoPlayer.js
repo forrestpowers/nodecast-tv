@@ -906,14 +906,20 @@ class VideoPlayer {
             this.stop();
             return;
         }
+        // Known streams play with their best plan; an unknown one starts right away, re-encoded,
+        // rather than waiting a second or more for a probe. The stream fills the cache as it runs.
         let info = null;
         try {
-            info = await (this.playbackProbe ||= new PlaybackProbe(fetch)).read(streamUrl, { program: channel?.program });
+            info = await (this.playbackProbe ||= new PlaybackProbe(fetch)).read(streamUrl, { program: channel?.program, fast: true });
         } catch (err) {
             if (err.name === 'AbortError') return;
             console.warn('[Player] Canvas probe failed, re-encoding:', err.message);
         }
         if (this.playbackGeneration !== playbackGeneration) return;
+        if (info?.pending) {
+            info = null;
+            this.refreshStreamInfo(streamUrl, channel, playbackGeneration);
+        }
         if (info) {
             this.currentStreamInfo = info;
             this.updateQualityBadge();
@@ -941,6 +947,19 @@ class VideoPlayer {
         this.showNowPlayingOverlay();
         this.fetchEpgData(channel);
         window.dispatchEvent(new CustomEvent('channelChanged', { detail: channel }));
+    }
+
+    /** The quality badge for a stream that started before anything was known about it. */
+    refreshStreamInfo(streamUrl, channel, playbackGeneration) {
+        setTimeout(async () => {
+            if (this.playbackGeneration !== playbackGeneration) return;
+            try {
+                const info = await this.playbackProbe.read(streamUrl, { program: channel?.program, fast: true });
+                if (info.pending || this.playbackGeneration !== playbackGeneration) return;
+                this.currentStreamInfo = info;
+                this.updateQualityBadge();
+            } catch (_) { /* the badge just stays empty */ }
+        }, 6000);
     }
 
     /**

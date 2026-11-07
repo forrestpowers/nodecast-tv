@@ -162,7 +162,8 @@ function inputArgs(url, { userAgent, seek = 0, live = false, realtime = false, h
     const seeking = seek > 0 && !live;
     return [
         '-hide_banner',
-        '-loglevel', 'warning',
+        // info prints the input's streams at startup (see services/streamInfo); nostats drops the progress line
+        '-loglevel', 'info', '-nostats',
         '-protocol_whitelist', FFMPEG_PROTOCOL_WHITELIST,
         '-user_agent', userAgent,
         '-probesize', '2000000',

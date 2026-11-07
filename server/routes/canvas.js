@@ -9,6 +9,13 @@ const { relay } = require('../services/webrtcRelay');
 const { providerSlots, playbackKey } = require('../services/providerSlots');
 const { PROVIDER_RETRY_DELAY_MS, isProviderRejection } = require('../services/ffmpegNetwork');
 const diagnostics = require('../services/diagnostics');
+const probeCache = require('../services/probeCache');
+const { InputInfoCapture } = require('../services/streamInfo');
+
+/** The stream's own ffmpeg describes its input as it starts: that fills the probe cache. */
+function captureStreamInfo(url, program) {
+    return new InputInfoCapture((info) => probeCache.set(probeCache.key(url, '', program), info), { url, program });
+}
 
 /**
  * Canvas playback stream
@@ -68,11 +75,13 @@ router.get('/stream', async (req, res) => {
         const child = ffmpeg = spawn(ffmpegPath, buildCanvasArgs(url, { ...options, userAgent, encoder }));
         holder.track(child);
         let produced = false, stderrTail = '';
+        const capture = captureStreamInfo(url, options.program);
         child.stdout.once('data', () => { produced = true; });
         child.stdout.pipe(res, { end: false });
 
         child.stderr.on('data', (data) => {
             const msg = data.toString();
+            capture.feed(msg);
             stderrTail = (stderrTail + msg).slice(-2000);
             if (/error/i.test(msg)) console.log(`[Canvas FFmpeg] ${redactText(msg)}`);
         });
@@ -184,8 +193,10 @@ router.get('/webrtc/session', async (req, res) => {
         const child = session.ffmpeg = spawn(ffmpegPath, buildWebrtcArgs(url, relay.rtspUrl(session.name), { ...options, userAgent, encoder }));
         holder.track(child);
         let stderrTail = '';
+        const capture = captureStreamInfo(url, options.program);
         child.stderr.on('data', (data) => {
             const msg = data.toString();
+            capture.feed(msg);
             stderrTail = (stderrTail + msg).slice(-2000);
             if (/error/i.test(msg)) console.log(`[WebRTC FFmpeg] ${redactText(msg)}`);
         });

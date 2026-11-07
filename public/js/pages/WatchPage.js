@@ -590,12 +590,13 @@ class WatchPage {
         let info = null;
         try {
             const ua = settings.userAgentPreset === 'custom' ? settings.userAgentCustom : settings.userAgentPreset;
-            info = await (this.playbackProbe ||= new PlaybackProbe(fetch)).read(url, { program, userAgent: ua || '' });
+            info = await (this.playbackProbe ||= new PlaybackProbe(fetch)).read(url, { program, userAgent: ua || '', fast: true });
         } catch (err) {
             if (err.name === 'AbortError') return;
             console.warn('[WatchPage] Canvas probe failed, re-encoding:', err.message);
         }
         if (this.playbackGeneration !== generation) return;
+        if (info?.pending) info = null; // start now, re-encoded; the stream fills the cache
         if (info) {
             this.setSourceDuration(info.duration);
             this.currentStreamInfo = info;

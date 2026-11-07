@@ -38,7 +38,17 @@ app.use(session({
 app.use(passport.initialize());
 app.use(passport.session());
 
-app.use(express.static(path.join(__dirname, '..', 'public')));
+// The HTML pages carry each local file's content version (?v=), and a file asked for by its
+// current version is cached for a year; the pages themselves are always revalidated.
+const assets = require('./services/assetVersions');
+assets.load();
+const page = (file) => (req, res) => {
+    res.set('Cache-Control', assets.REVALIDATE);
+    res.type('html').send(assets.html(file));
+};
+app.get(['/', '/index.html'], page('index.html'));
+app.get('/login.html', page('login.html'));
+app.use(express.static(assets.PUBLIC_DIR, { setHeaders: (res) => res.set('Cache-Control', assets.cacheControl(res.req)) }));
 
 // FFMPEG Configuration (optional - for transcoding support)
 // Priority: 1. System FFmpeg (better Docker DNS support), 2. ffmpeg-static npm package
@@ -219,9 +229,7 @@ app.use('/api/openwebif', require('./routes/openwebif'));
 app.use('/api/diagnostics', require('./routes/diagnostics'));
 
 // SPA fallback - serve index.html for all non-API routes
-app.get('*', (req, res) => {
-    res.sendFile(path.join(__dirname, '..', 'public', 'index.html'));
-});
+app.get('*', page('index.html'));
 
 // Error handling
 app.use((err, req, res, next) => {

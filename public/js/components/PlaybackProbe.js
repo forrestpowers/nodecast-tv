@@ -6,12 +6,14 @@ class PlaybackProbe {
         this.leaseId = Array.from(globalThis.crypto.getRandomValues(new Uint8Array(16)),
             byte => byte.toString(16).padStart(2, '0')).join('');
     }
-    async read(url, { program = null, userAgent } = {}) {
+    /** With `fast`, the server answers from its cache or says `{ pending: true }`, and never probes. */
+    async read(url, { program = null, userAgent, fast = false } = {}) {
         this.cancel();
         const controller = this.controller = new AbortController();
         const query = new URLSearchParams({ url, probeLeaseId: this.leaseId, requestSequence: String(++this.sequence), client: PlaybackProbe.clientId });
         if (program != null) query.set('program', program);
         if (userAgent !== undefined) query.set('ua', userAgent);
+        if (fast) query.set('fast', '1');
         try {
             const response = await this.fetch('/api/probe?' + query, { signal: controller.signal, credentials: 'same-origin' });
             const info = await response.json();
