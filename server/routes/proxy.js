@@ -11,6 +11,7 @@ router.use((req, res, next) => {
 const { sources } = require('../db');
 const sourceAccess = require('../services/sourceAccess');
 const { toLiveStream } = require('../services/channelFields');
+const channelSelection = require('../services/channelSelection');
 
 // Each login only reaches the sources it may use (see services/sourceAccess).
 router.param('sourceId', sourceAccess.sourceParam);
@@ -141,6 +142,8 @@ router.get('/xtream/:sourceId/live_streams', async (req, res) => {
         const categoryId = req.query.category_id;
         const includeHidden = req.query.includeHidden === 'true';
         const streams = getStreamsFromDb(sourceId, 'live', categoryId, includeHidden);
+        // The car gets the selected groups plus this login's favorites; the rest stays here
+        if (!includeHidden && !categoryId) streams.push(...channelSelection.favoriteOnlyLive(req.user, sourceId));
         res.json(streams);
     } catch (err) {
         console.error(err);
@@ -349,15 +352,44 @@ router.get('/epg/:sourceId', async (req, res) => {
         const windowStart = nowOnly ? Date.now() : Date.now() - (24 * 60 * 60 * 1000); // -24 hours
         const windowEnd = Date.now() + ((nowOnly ? 4 : 24) * 60 * 60 * 1000);          // +24 hours
 
-        // Fetch programs within the time window
-        let programsQuery = `
-            SELECT channel_id as channelId, start_time, end_time, title, description, data 
-            FROM epg_programs 
-            WHERE source_id = ? AND end_time > ? AND start_time < ?
-        `;
-        const params = [sourceId, windowStart, windowEnd];
+        // A provider's guide is trimmed to the channels this login downloads (selected groups and
+        // favorites): the guide for the whole provider is far more than the car needs. A guide added
+        // on its own (an 'epg' source) belongs to no channel list, so it is sent whole.
+        const source = await sources.getById(sourceId);
+        const trim = source?.type !== 'epg';
+        const selected = trim ? channelSelection.selectedEpg(req.user, sourceId) : null;
+        const wanted = new Set(selected?.ids);
 
-        const programs = db.prepare(programsQuery).all(...params);
+        // Fetch EPG channels from playlist_items (type='epg_channel'), matched by guide id or by name
+        const storedChannels = db.prepare(`
+            SELECT item_id as id, name, stream_icon as icon, data 
+            FROM playlist_items 
+            WHERE source_id = ? AND type = 'epg_channel'
+        `).all(sourceId).filter((channel) => !trim || wanted.has(String(channel.id)) || selected.names.has(channel.name));
+        storedChannels.forEach((channel) => wanted.add(String(channel.id)));
+
+        // Fetch programs within the time window, for those channels only
+        const ids = [...wanted];
+        let programs = [];
+        if (!trim) {
+            programs = db.prepare(`
+                SELECT channel_id as channelId, start_time, end_time, title, description, data 
+                FROM epg_programs 
+                WHERE source_id = ? AND end_time > ? AND start_time < ?
+            `).all(sourceId, windowStart, windowEnd);
+        } else if (ids.length > 0 && ids.length <= 500) {
+            programs = db.prepare(`
+                SELECT channel_id as channelId, start_time, end_time, title, description, data 
+                FROM epg_programs 
+                WHERE source_id = ? AND end_time > ? AND start_time < ? AND channel_id IN (${ids.map(() => '?').join(',')})
+            `).all(sourceId, windowStart, windowEnd, ...ids);
+        } else if (ids.length > 0) {
+            programs = db.prepare(`
+                SELECT channel_id as channelId, start_time, end_time, title, description, data 
+                FROM epg_programs 
+                WHERE source_id = ? AND end_time > ? AND start_time < ?
+            `).all(sourceId, windowStart, windowEnd).filter((p) => wanted.has(String(p.channelId)));
+        }
 
         const formattedPrograms = programs.map(p => ({
             channelId: p.channelId,
@@ -367,21 +399,8 @@ router.get('/epg/:sourceId', async (req, res) => {
             description: p.description
         }));
 
-        // Fetch EPG channels from playlist_items (type='epg_channel')
-
-
-        let epgChannels = [];
-
-        // Try getting stored channels first
-        const storedChannels = db.prepare(`
-            SELECT item_id as id, name, stream_icon as icon, data 
-            FROM playlist_items 
-            WHERE source_id = ? AND type = 'epg_channel'
-        `).all(sourceId);
-
-        if (storedChannels.length > 0) {
-            epgChannels = storedChannels;
-        } else {
+        let epgChannels = storedChannels;
+        if (epgChannels.length === 0) {
             // Fallback: Build from unique channelIds in programmes (Legacy behavior)
             const uniqueChannelIds = [...new Set(programs.map(p => p.channelId))];
             epgChannels = uniqueChannelIds.map(id => ({

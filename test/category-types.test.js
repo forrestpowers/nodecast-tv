@@ -79,6 +79,12 @@ test('one category ID used by live, movies and series stays three separate categ
     }, 'a successful sync');
     const list = async (type, query = '') => (await request(`/api/proxy/xtream/${source.id}/${type}_categories${query}`, { headers })).body.map((c) => [c.category_id, c.category_name]);
     await synced();
+    // Nothing is selected until Manage Content says so
+    assert.deepEqual(await list('live'), []);
+    assert.deepEqual(await list('live', '?includeHidden=true'), [['1', 'News']]);
+    for (const contentType of ['channels', 'movies', 'series']) {
+        await request('/api/channels/show/all', { headers, body: { sourceId: source.id, contentType } });
+    }
 
     assert.deepEqual(await list('live'), [['1', 'News']]);
     assert.deepEqual(await list('vod'), [['1', 'Action']]);
@@ -155,7 +161,7 @@ test('category rows from before the key included the type move across with their
         ['1:live:1', 'live', 'Headlines', 1],
         ['1:live:Kids', 'live', 'Kids', 1],
         ['1:live:live:Kids', 'live', 'live:Kids', 0],
-        ['1:movie:1', 'movie', 'Comedy', 0],
+        ['1:movie:1', 'movie', 'Comedy', 1], // a category that is new arrives unselected
         ['1:movie:7', 'movie', 'Action', 1],
         ['1:series:8', 'series', 'Drama', 0],
         ['2:live:1', 'live', 'Sport', 0]

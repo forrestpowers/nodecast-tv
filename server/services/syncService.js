@@ -202,6 +202,7 @@ class SyncService {
                 const held = this.holdList(source.id, type, items.length, this.countItems(source.id, type));
                 await this.saveCategories(source.id, type, categories);
                 await this.saveStreams(source.id, type, items, { skipPurge: Boolean(held) });
+                this.adoptCategoryVisibility(source.id, type);
                 if (held) problems.push(`${label}: ${held}`);
             } catch (error) {
                 console.warn(`[Sync] ${label} refresh failed for ${source.name}, keeping the stored list:`, error.message);
@@ -254,6 +255,23 @@ class SyncService {
     }
 
     /**
+     * Content is opted in, not out: a new category arrives hidden, and a new item arrives undecided
+     * (is_hidden = -1, which every list treats as hidden) and takes its category's state here, once
+     * both lists are saved in whichever order the sync wrote them. So a group the viewer picked in
+     * Manage Content keeps growing with the provider, and everything else stays on the server.
+     * An item whose category is unknown stays hidden. Rows already decided are left alone.
+     */
+    adoptCategoryVisibility(sourceId, type) {
+        const { changes } = getDb().prepare(`
+            UPDATE playlist_items SET is_hidden = COALESCE(
+                (SELECT c.is_hidden FROM categories c
+                 WHERE c.id = playlist_items.source_id || ':' || playlist_items.type || ':' || playlist_items.category_id), 1)
+            WHERE source_id = ? AND type = ? AND is_hidden = -1
+        `).run(sourceId, type);
+        if (changes > 0) console.log(`[Sync] ${changes} new ${type} items for source ${sourceId} follow their category's selection`);
+    }
+
+    /**
      * Batch save categories
      */
     async saveCategories(sourceId, type, categories) {
@@ -261,8 +279,8 @@ class SyncService {
         console.log(`[Sync] Saving ${categories.length} ${type} categories for source ${sourceId}...`);
         const db = getDb();
         const stmt = db.prepare(`
-            INSERT INTO categories (id, source_id, category_id, type, name, parent_id, data)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO categories (id, source_id, category_id, type, name, parent_id, data, is_hidden)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 1)
             ON CONFLICT(id) DO UPDATE SET
                 name = excluded.name,
                 data = excluded.data
@@ -309,9 +327,9 @@ class SyncService {
             INSERT INTO playlist_items (
                 id, source_id, item_id, type, name, category_id, 
                 stream_icon, stream_url, program, container_extension,
-                rating, year, added_at, data
+                rating, year, added_at, data, is_hidden
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, -1)
             ON CONFLICT(id) DO UPDATE SET
                 name = excluded.name,
                 category_id = excluded.category_id,
@@ -712,6 +730,7 @@ class SyncService {
         }));
 
         await this.saveCategories(source.id, 'live', categories);
+        this.adoptCategoryVisibility(source.id, 'live');
         if (held) throw new Error(`Previous list kept for live channels: ${held}`);
         console.log(`[Sync] M3U sync complete for ${source.name}`);
     }

@@ -62,6 +62,10 @@ const API = {
     // Channels (hidden items)
     channels: {
         getHidden: (sourceId = null) => API.request('GET', `/channels/hidden${sourceId ? `?sourceId=${sourceId}` : ''}`),
+        // Manage Content: groups with counts, one group's channels, and a search, so the whole list never comes down
+        groups: (sourceId) => API.request('GET', `/channels/${sourceId}/groups`),
+        groupItems: (sourceId, categoryId) => API.request('GET', `/channels/${sourceId}/groups/${encodeURIComponent(categoryId)}/items`),
+        search: (sourceId, q) => API.request('GET', `/channels/${sourceId}/search?q=${encodeURIComponent(q)}`),
         hide: (sourceId, itemType, itemId) => API.request('POST', '/channels/hide', { sourceId, itemType, itemId }),
         show: (sourceId, itemType, itemId) => API.request('POST', '/channels/show', { sourceId, itemType, itemId }),
         isHidden: (sourceId, itemType, itemId) => API.request('GET', `/channels/hidden/check?sourceId=${sourceId}&itemType=${itemType}&itemId=${itemId}`),

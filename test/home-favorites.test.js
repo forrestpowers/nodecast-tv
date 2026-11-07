@@ -73,11 +73,13 @@ test('Home gets favorites without the channel list', async (t) => {
     const bob = await login('Bob');
 
     const source = (await request('/api/sources', { headers: alice, body: { type: 'm3u', name: 'Mine', url: `http://127.0.0.1:${provider.address().port}/list.m3u` } })).body;
-    let streams;
-    for (let attempt = 0; attempt < 100 && !streams?.length; attempt++) {
-        streams = (await request(`/api/proxy/xtream/${source.id}/live_streams`, { headers: alice })).body;
-        if (!streams?.length) await new Promise((resolve) => setTimeout(resolve, 50));
-    }
+    const synced = async () => (await request('/api/sources/status', { headers: alice })).body.find((row) => row.source_id === source.id && row.type === 'all')?.status === 'success';
+    for (let attempt = 0; attempt < 100 && !(await synced()); attempt++) await new Promise((resolve) => setTimeout(resolve, 50));
+    // Nothing comes down until it is picked in Manage Content; this login takes the whole list
+    assert.deepEqual((await request(`/api/proxy/xtream/${source.id}/live_streams`, { headers: alice })).body, []);
+    assert.deepEqual((await request(`/api/channels/${source.id}/groups`, { headers: alice })).body, [{ categoryId: 'News', name: 'News', total: 3, visible: 0 }]);
+    await request('/api/channels/show/all', { headers: alice, body: { sourceId: source.id, contentType: 'channels' } });
+    const streams = (await request(`/api/proxy/xtream/${source.id}/live_streams`, { headers: alice })).body;
     assert.equal(streams.length, 3);
     assert.deepEqual(Object.keys(streams[0]).sort(), ['category_id', 'epg_channel_id', 'name', 'program', 'stream_icon', 'stream_id', 'stream_url']);
     assert.equal(streams.find((s) => s.name === 'One').epg_channel_id, 'one.us');
@@ -94,9 +96,9 @@ test('Home gets favorites without the channel list', async (t) => {
     assert.deepEqual(channel, { id: `m3u_${source.id}_${one.stream_id}`, name: 'One', tvgLogo: one.stream_icon, sourceId: source.id });
     assert.deepEqual(await names(bob), [], 'favorites are per login');
 
-    // Hidden channels and disabled sources stay off Home, as they do in Live TV
+    // A favorite is downloaded even when its channel is not selected; a disabled source is not
     await request('/api/channels/hide', { headers: alice, body: { sourceId: source.id, itemType: 'channel', itemId: two.stream_id } });
-    assert.deepEqual(await names(), ['One']);
+    assert.deepEqual(await names(), ['One', 'Two']);
     await request(`/api/sources/${source.id}/toggle`, { headers: alice, method: 'POST' });
     assert.deepEqual(await names(), []);
     assert.ok(three, 'the rest of the list was never needed');
@@ -119,7 +121,9 @@ test('the Watch page can ask for a few movies instead of a whole category', asyn
     const source = (await request('/api/sources', { headers, body: { type: 'xtream', name: 'Films', url: `http://127.0.0.1:${provider.address().port}`, username: 'u', password: 'p' } })).body;
 
     const count = async (query) => (await request(`/api/proxy/xtream/${source.id}/vod_streams${query}`, { headers })).body.length;
-    for (let attempt = 0; attempt < 100 && await count('') < 30; attempt++) await new Promise((resolve) => setTimeout(resolve, 50));
+    for (let attempt = 0; attempt < 100 && await count('?includeHidden=true') < 30; attempt++) await new Promise((resolve) => setTimeout(resolve, 50));
+    assert.equal(await count(''), 0, 'nothing is selected until Manage Content says so');
+    await request('/api/channels/show/all', { headers, body: { sourceId: source.id, contentType: 'movies' } });
     assert.equal(await count(''), 30);
     assert.equal(await count('?category_id=7&limit=13'), 13);
     assert.equal(await count('?limit=nonsense'), 30);

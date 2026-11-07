@@ -70,7 +70,7 @@ test('a bad refresh keeps the last good channel list', async (t) => {
     const headers = { Cookie: admin.cookie.split(';')[0] };
     const source = (await request('/api/sources', { headers, body: { type: 'm3u', name: 'Provider', url } })).body;
 
-    const channels = async () => (await request(`/api/proxy/xtream/${source.id}/live_streams`, { headers })).body.length;
+    const channels = async () => (await request(`/api/proxy/xtream/${source.id}/live_streams?includeHidden=true`, { headers })).body.length;
     const status = async () => (await request('/api/sources/status', { headers })).body.find((row) => row.source_id === source.id && row.type === 'all');
     const refreshed = async (expected) => waitFor(async () => {
         const row = await status();

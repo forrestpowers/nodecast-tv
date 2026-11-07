@@ -78,7 +78,7 @@ async function startApp(t) {
 
 async function waitForChannels(request, headers, sourceId) {
     for (let attempt = 0; attempt < 50; attempt++) {
-        const { body } = await request(`/api/proxy/xtream/${sourceId}/live_streams`, { headers });
+        const { body } = await request(`/api/proxy/xtream/${sourceId}/live_streams?includeHidden=true`, { headers });
         if (Array.isArray(body) && body.length) return body;
         await new Promise(resolve => setTimeout(resolve, 100));
     }

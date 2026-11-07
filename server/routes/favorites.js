@@ -27,8 +27,8 @@ router.get('/channels', async (req, res) => {
         const enabled = new Map((await sources.getAll()).filter(s => s.enabled).map(s => [s.id, s]));
         const lookup = getDb().prepare(`
             SELECT item_id, name, stream_icon, category_id, data FROM playlist_items
-            WHERE id = ? AND type = 'live' AND is_hidden = 0
-        `);
+            WHERE id = ? AND type = 'live'
+        `); // a favorite is downloaded whether or not its group is selected
 
         const channels = [];
         for (const favorite of items) {

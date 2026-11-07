@@ -316,8 +316,9 @@ class ChannelList {
 
         let filteredChannels = this.filteredChannels;
 
-        // 2. Group
+        // 2. Group (a favorite from an unselected group belongs to Favorites alone)
         filteredChannels.forEach(ch => {
+            if (ch.hidden) return;
             const groupKey = ch.groupTitle || 'Uncategorized';
             if (!groupedChannels[groupKey]) {
                 groupedChannels[groupKey] = [];
@@ -394,10 +395,14 @@ class ChannelList {
 
         // Empty State
         if (this.sortedGroups.length === 0) {
+            const hasSource = (this.sources || []).some(s => s.enabled && (s.type === 'xtream' || s.type === 'm3u'));
+            const [title, hint] = searchTerm ? ['No channels match your search', 'Try a different search term']
+                : hasSource ? ['No channel groups selected', 'Pick groups under Settings → Manage Content. Only those and your favorites are downloaded here.']
+                    : ['No channels loaded', 'Add a source in Settings to get started'];
             this.container.innerHTML = `
         <div class="empty-state">
-          <p>${searchTerm ? 'No channels match your search' : 'No channels loaded'}</p>
-          <p class="hint">${searchTerm ? 'Try a different search term' : 'Add a source in Settings to get started'}</p>
+          <p>${title}</p>
+          <p class="hint">${hint}</p>
         </div>
       `;
             return;
@@ -723,11 +728,8 @@ class ChannelList {
             this.groups = list.groups;
             this.channels = list.channels;
 
-            // Load hidden items and favorites
-            await Promise.all([
-                this.loadHiddenItems(),
-                this.loadFavorites()
-            ]);
+            // The server already left out what is not selected, so only favorites are needed
+            await this.loadFavorites();
 
             this.render();
         } catch (err) {
@@ -755,10 +757,7 @@ class ChannelList {
             this.groups = lists.flatMap(list => list.groups);
             this.channels = lists.flatMap(list => list.channels);
 
-            await Promise.all([
-                this.loadHiddenItems(),
-                this.loadFavorites()
-            ]);
+            await this.loadFavorites();
             this.render();
         } catch (err) {
             console.error('Error loading all channels:', err);
@@ -807,6 +806,7 @@ class ChannelList {
             tvgLogo: stream.stream_icon,
             groupId: `xtream_${sourceId}_${stream.category_id}`,
             groupTitle: categoryNames.get(String(stream.category_id)) || 'Uncategorized',
+            hidden: Boolean(stream.hidden), // a favorite outside the selected groups: listed under Favorites only
             sourceId,
             sourceType: 'xtream'
         }));
@@ -847,6 +847,7 @@ class ChannelList {
             zapDelay: source?.zapDelay ?? 1500,
             groupId: `m3u_${sourceId}_${stream.category_id}`,
             groupTitle: categoryNames.get(String(stream.category_id)) || 'Uncategorized',
+            hidden: Boolean(stream.hidden),
             sourceId,
             sourceType: 'm3u'
         }));

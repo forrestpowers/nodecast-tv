@@ -4982,3 +4982,9 @@ kbd {
     max-width: 70px;
   }
 }
+/* Manage Content: the count of a group's channels that are downloaded */
+.content-group .group-count {
+  margin-left: var(--space-xs);
+  color: var(--color-text-secondary);
+  font-size: 0.8em;
+}

@@ -523,6 +523,8 @@ class SourceManager {
     initContentBrowser() {
         this.contentSourceSelect = document.getElementById('content-source-select');
         this.contentTree = document.getElementById('content-tree');
+        // Live channels are picked by group without downloading the list; movies and series keep the old tree
+        this.contentPicker = new ContentPicker({ container: this.contentTree, onChanged: () => this.refreshChannelList() });
         this.channelsBtn = document.getElementById('content-type-channels');
         this.moviesBtn = document.getElementById('content-type-movies');
         this.seriesBtn = document.getElementById('content-type-series');
@@ -560,7 +562,10 @@ class SourceManager {
         document.getElementById('content-hide-all')?.addEventListener('click', () => this.setAllVisibility(false));
 
         // Save Changes button
-        document.getElementById('content-save')?.addEventListener('click', () => this.saveContentChanges());
+        document.getElementById('content-save')?.addEventListener('click', () => {
+            if (this.contentType === 'channels') return this.contentPicker.save();
+            this.saveContentChanges();
+        });
 
         // Search input
         const searchInput = document.getElementById('content-search');
@@ -568,6 +573,7 @@ class SourceManager {
 
         searchInput?.addEventListener('input', (e) => {
             this.searchQuery = e.target.value.toLowerCase().trim();
+            if (this.contentType === 'channels') return this.contentPicker.search(e.target.value);
             this.renderTree();
         });
 
@@ -575,6 +581,7 @@ class SourceManager {
             if (searchInput) {
                 searchInput.value = '';
                 this.searchQuery = '';
+                if (this.contentType === 'channels') return this.contentPicker.search('');
                 this.renderTree();
             }
         });
@@ -597,8 +604,15 @@ class SourceManager {
         } else if (this.contentType === 'series') {
             this.loadSeriesCategoriesTree(parseInt(sourceId));
         } else {
-            this.loadContentTree(parseInt(sourceId));
+            this.contentPicker.load(parseInt(sourceId));
         }
+    }
+
+    /** After the selection changes, the channel list and guide are read again on their next showing. */
+    refreshChannelList() {
+        const list = window.app?.channelList;
+        if (list?.channels?.length) list.loadChannels().catch(err => console.warn('[SourceManager] Channel list reload failed:', err));
+        if (window.app?.epgGuide) window.app.epgGuide.fullGuideLoaded = false;
     }
 
     /**
@@ -1129,6 +1143,7 @@ class SourceManager {
      * Uses fast bulk API endpoint (single SQL statement) instead of item-by-item
      */
     async setAllVisibility(visible) {
+        if (this.contentType === 'channels') return this.contentPicker.setAll(visible);
         if (!this.treeData || !this.treeData.groups) return;
 
         const saveBtn = document.getElementById('content-save');

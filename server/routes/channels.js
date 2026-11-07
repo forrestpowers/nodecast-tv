@@ -5,6 +5,78 @@ const sourceAccess = require('../services/sourceAccess');
 
 // Hiding changes a source for everyone using it, so it needs a source this login manages.
 router.use(sourceAccess.requireManagedBody);
+router.param('sourceId', sourceAccess.manageParam);
+
+/**
+ * Manage Content, kept light for the car: the groups of a source with how many of their channels
+ * are selected, then one group's channels only when it is opened, and a search over the rest.
+ * The provider's full list never leaves the server.
+ */
+router.get('/:sourceId/groups', (req, res) => {
+    try {
+        const sourceId = Number(req.params.sourceId);
+        const db = getDb();
+        const names = new Map(db.prepare(`SELECT category_id, name FROM categories WHERE source_id = ? AND type = 'live'`)
+            .all(sourceId).map((row) => [row.category_id, row.name]));
+        const groups = db.prepare(`
+            SELECT category_id, COUNT(*) AS total, SUM(is_hidden = 0) AS visible
+            FROM playlist_items WHERE source_id = ? AND type = 'live' GROUP BY category_id
+        `).all(sourceId).map((row) => ({
+            categoryId: row.category_id,
+            name: names.get(row.category_id) || (row.category_id == null ? 'Uncategorized' : String(row.category_id)),
+            total: row.total,
+            visible: row.visible
+        }));
+        groups.sort((a, b) => a.name.localeCompare(b.name));
+        res.json(groups);
+    } catch (err) {
+        console.error('Error listing groups:', err);
+        res.status(500).json({ error: 'Failed to list groups' });
+    }
+});
+
+const liveItem = (row) => ({ id: row.item_id, name: row.name, hidden: row.is_hidden !== 0 });
+
+router.get('/:sourceId/groups/:categoryId/items', (req, res) => {
+    try {
+        const rows = getDb().prepare(`
+            SELECT item_id, name, is_hidden FROM playlist_items
+            WHERE source_id = ? AND type = 'live' AND category_id = ? ORDER BY name COLLATE NOCASE
+        `).all(Number(req.params.sourceId), req.params.categoryId);
+        res.json(rows.map(liveItem));
+    } catch (err) {
+        console.error('Error listing group items:', err);
+        res.status(500).json({ error: 'Failed to list channels' });
+    }
+});
+
+const SEARCH_LIMIT = 300;
+
+router.get('/:sourceId/search', (req, res) => {
+    try {
+        const q = String(req.query.q || '').trim();
+        if (!q) return res.json([]);
+        const sourceId = Number(req.params.sourceId);
+        const db = getDb();
+        const pattern = `%${q.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+        const rows = db.prepare(`
+            SELECT item_id, name, is_hidden, category_id FROM playlist_items
+            WHERE source_id = ? AND type = 'live' AND name LIKE ? ESCAPE '\\'
+            ORDER BY name COLLATE NOCASE LIMIT ?
+        `).all(sourceId, pattern, SEARCH_LIMIT + 1);
+        const names = new Map(db.prepare(`SELECT category_id, name FROM categories WHERE source_id = ? AND type = 'live'`)
+            .all(sourceId).map((row) => [row.category_id, row.name]));
+        res.json({
+            truncated: rows.length > SEARCH_LIMIT,
+            items: rows.slice(0, SEARCH_LIMIT).map((row) => ({
+                ...liveItem(row), categoryId: row.category_id, categoryName: names.get(row.category_id) || String(row.category_id)
+            }))
+        });
+    } catch (err) {
+        console.error('Error searching channels:', err);
+        res.status(500).json({ error: 'Search failed' });
+    }
+});
 
 // Helper to map API item types to DB types and tables
 function mapItemType(apiType) {
