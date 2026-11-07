@@ -26,6 +26,7 @@ const https = require('https');
 const { spawn } = require('child_process');
 const ffmpegPath = require('ffmpeg-static');
 const { Readable } = require('stream');
+const imageResize = require('../services/imageResize');
 
 // Default cache max age in hours
 const DEFAULT_MAX_AGE_HOURS = 24;
@@ -578,6 +579,16 @@ router.get('/image', async (req, res) => {
             return res.status(400).json({ error: 'URL required' });
         }
 
+        // ?w= asks for a small copy: the car decodes this, not the provider's full-size original
+        const width = imageResize.parseWidth(req.query.w);
+        const send = (image) => {
+            res.set('Content-Type', image.type);
+            res.set('Cache-Control', 'public, max-age=86400');
+            res.end(image.body);
+        };
+        const cached = width && imageResize.cached(url, width);
+        if (cached) return send(cached);
+
         const response = await fetch(url, {
             headers: {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -590,6 +601,7 @@ router.get('/image', async (req, res) => {
         }
 
         const contentType = response.headers.get('content-type') || 'image/png';
+        if (width) return send(await imageResize.resize(url, width, contentType, response));
         res.set('Content-Type', contentType);
         res.set('Access-Control-Allow-Origin', '*');
         res.set('Cache-Control', 'public, max-age=86400'); // Cache for 24 hours

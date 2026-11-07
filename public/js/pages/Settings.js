@@ -552,6 +552,7 @@ class SettingsPage {
 
     async show() {
         if (document.getElementById('tab-diagnostics')?.classList.contains('active')) this.diagnostics.start();
+        this.app.sourceManager.startSyncPolling();
 
         // Show users tab for admin
         if (this.app.currentUser && this.app.currentUser.role === 'admin') {
@@ -661,6 +662,7 @@ class SettingsPage {
 
     hide() {
         this.diagnostics.stop();
+        this.app.sourceManager.stopSyncPolling();
         // Page is hidden
     }
 }

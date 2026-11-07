@@ -35,9 +35,9 @@ class ChannelList {
      */
     getProxiedImageUrl(url) {
         if (!url || url.length === 0) return '/img/placeholder.png';
-        // Only proxy if we're on HTTPS and the image is HTTP
-        if (window.location.protocol === 'https:' && url.startsWith('http://')) {
-            return `/api/proxy/image?url=${encodeURIComponent(url)}`;
+        // Every provider logo goes through the server, which also shrinks it (shown at 64 px)
+        if (/^https?:\/\//.test(url)) {
+            return `/api/proxy/image?url=${encodeURIComponent(url)}&w=128`;
         }
         return url;
     }

@@ -29,7 +29,7 @@ test('canvas args emit H.264 + AAC in MPEG-TS and only seek VOD', () => {
     assert.ok(vod.indexOf('-ss') < vod.indexOf('-i'), 'input seeking');
     assert.ok(!vod.includes('-seekable'));
     assert.equal(vod[vod.indexOf('-c:v') + 1], 'libx264');
-    assert.equal(vod[vod.indexOf('-vf') + 1], "bwdif=mode=send_frame:deint=interlaced,scale=-2:'min(ih,480)'");
+    assert.equal(vod[vod.indexOf('-vf') + 1], "bwdif=mode=send_frame:deint=interlaced,fps=fps='if(gt(source_fps,30),source_fps/2,source_fps)',scale=-2:'min(ih,480)'");
     assert.equal(vod[vod.indexOf('-c:a') + 1], 'aac');
     assert.ok(vod.includes('-af'));
     assert.equal(vod[vod.indexOf('-f') + 1], 'mpegts');
@@ -48,7 +48,7 @@ test('copied AAC skips the audio filter, and known interlaced sources keep one f
     assert.ok(!copy.includes('-af') && !copy.includes('-vf'));
 
     const interlaced = buildCanvasArgs('https://example.test/live.ts', { userAgent: 'ua', deinterlace: 'double', live: true });
-    assert.equal(interlaced[interlaced.indexOf('-vf') + 1], "bwdif=mode=send_field,scale=-2:'min(ih,720)'");
+    assert.equal(interlaced[interlaced.indexOf('-vf') + 1], "bwdif=mode=send_field,fps=fps='if(gt(source_fps,30),source_fps/2,source_fps)',scale=-2:'min(ih,720)'");
 });
 
 test('SPS parsing flags interlaced H.264 so copy mode can fall back before decoding', { skip: !hasFfmpeg && 'ffmpeg not installed' }, () => {
@@ -77,6 +77,26 @@ test('mpeg1 args target JSMpeg: MPEG-1 without B-frames, MP2 audio, standard fra
     assert.match(args[args.indexOf('-vf') + 1], /^bwdif=mode=send_frame:deint=interlaced,fps=fps='if\(lt\(source_fps,24\.5\),24,if\(lt\(source_fps,27\.5\),25,30\)\)',scale=-2:'min\(ih,480\)'$/);
     assert.equal(args.filter((arg) => arg === '-c:v').length, 1);
     assert.equal(args.filter((arg) => arg === '-c:a').length, 1);
+});
+
+test('H.264 re-encodes stop at 30 fps, halving faster sources evenly', { skip: !hasFfmpeg && 'ffmpeg not installed' }, () => {
+    const routeArgs = buildCanvasArgs('unused', { userAgent: 'ua', videoMode: 'encode', maxHeight: 360 });
+    for (const [rate, expected] of [['25', '25/1'], ['30', '30/1'], ['50', '25/1'], ['59.94', '30000/1001']]) {
+        const args = [
+            '-hide_banner', '-loglevel', 'error',
+            '-f', 'lavfi', '-i', `testsrc2=size=640x480:rate=${rate}`,
+            '-f', 'lavfi', '-i', 'sine=sample_rate=48000',
+            '-t', '2', '-map', '0:v:0', '-map', '1:a:0',
+            ...routeArgs.slice(routeArgs.indexOf('-sn'))
+        ];
+        const encoded = spawnSync('ffmpeg', args, { maxBuffer: 64 * 1024 * 1024 });
+        assert.equal(encoded.status, 0, encoded.stderr?.toString());
+        const probe = spawnSync('ffprobe', ['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=codec_name,avg_frame_rate,r_frame_rate',
+            '-of', 'json', '-i', 'pipe:0'], { input: encoded.stdout });
+        const [video] = JSON.parse(probe.stdout.toString()).streams;
+        assert.equal(video.codec_name, 'h264');
+        assert.equal(video.r_frame_rate, expected, `source ${rate} fps`);
+    }
 });
 
 test('mpeg1 output decodes as MPEG-1 + MP2 at a frame rate JSMpeg knows', { skip: !hasFfmpeg && 'ffmpeg not installed' }, () => {

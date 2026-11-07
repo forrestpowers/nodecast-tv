@@ -25,7 +25,7 @@ test('full GPU args: decode, deinterlace, scale and encode without B-frames on t
     assert.deepEqual(args.slice(args.indexOf('-init_hw_device'), input),
         ['-init_hw_device', 'vaapi=va:/dev/dri/renderD128', '-filter_hw_device', 'va',
             '-hwaccel', 'vaapi', '-hwaccel_device', 'va', '-hwaccel_output_format', 'vaapi']);
-    assert.equal(args[args.indexOf('-vf') + 1], "deinterlace_vaapi=auto=1,scale_vaapi=w=-2:h='min(ih,720)':format=nv12");
+    assert.equal(args[args.indexOf('-vf') + 1], "deinterlace_vaapi=auto=1,scale_vaapi=w=-2:h='min(ih,720)':format=nv12,fps=fps='if(gt(source_fps,30),source_fps/2,source_fps)'");
     const double = buildWebrtcArgs('https://example.test/live.m3u8', 'x', { userAgent: 'ua', live: true, deinterlace: 'double', encoder: vaapi });
     assert.match(double[double.indexOf('-vf') + 1], /^deinterlace_vaapi=rate=field:auto=1,/);
     assert.equal(args[args.indexOf('-c:v') + 1], 'h264_vaapi');
@@ -38,7 +38,7 @@ test('full GPU args: decode, deinterlace, scale and encode without B-frames on t
     assert.equal(stream[stream.indexOf('-profile:v') + 1], 'main');
     assert.equal(stream[stream.indexOf('-low_power') + 1], '1');
     assert.ok(!stream.includes('-hwaccel'), 'CANVAS_HW_DECODE=false keeps decoding on the CPU');
-    assert.equal(stream[stream.indexOf('-vf') + 1], "bwdif=mode=send_frame:deint=interlaced,scale=-2:'min(ih,720)',format=nv12,hwupload");
+    assert.equal(stream[stream.indexOf('-vf') + 1], "bwdif=mode=send_frame:deint=interlaced,fps=fps='if(gt(source_fps,30),source_fps/2,source_fps)',scale=-2:'min(ih,720)',format=nv12,hwupload");
     assert.equal(stream[stream.indexOf('-force_key_frames') + 1], 'expr:gte(t,n_forced*2)');
 });
 

@@ -279,6 +279,55 @@ h4 {
   white-space: nowrap;
 }
 
+/* Play / Stop for Live TV, shown once a channel has played */
+.player-buttons {
+  display: flex;
+  gap: 2px;
+  margin-right: clamp(2px, 0.8vw, var(--space-sm));
+}
+
+.player-buttons[hidden] {
+  display: none;
+}
+
+/* Below 1600 px, which covers both cars (773 to 1410 px): room for Play and Stop comes from the
+   version badge (it is in Settings > Diagnostics) and the Logout label (its icon and tooltip stay) */
+@media (max-width: 1599px) {
+  .version-badge,
+  #logout-btn .nav-label {
+    display: none;
+  }
+}
+
+.player-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--color-text-primary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.player-button:hover:not(:disabled) {
+  background: var(--color-bg-hover);
+}
+
+.player-button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.player-button .icon {
+  width: 22px;
+  height: 22px;
+}
+
 .nav-link:hover {
   color: var(--color-text-primary);
   background: var(--color-bg-hover);
@@ -1325,6 +1374,7 @@ video::cue {
 /* Admins only get Settings; viewers don't get the app-wide settings */
 body.is-admin .nav-link[data-page]:not([data-page="settings"]),
 body.is-admin #now-playing-indicator,
+body.is-admin .player-buttons,
 body:not(.is-admin) [data-admin-only] {
   display: none !important;
 }

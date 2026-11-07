@@ -129,12 +129,15 @@ class WebrtcRelay {
     }
 
     async start() {
-        const configPath = path.join(os.tmpdir(), `nodecast-mediamtx-${process.pid}.yml`);
+        // A folder of its own: MediaMTX watches its config file's folder, and exits if an entry
+        // there vanishes as it starts (a shared temp folder sees other programs' files come and go)
+        this.configDir ||= fs.mkdtempSync(path.join(os.tmpdir(), 'nodecast-mediamtx-'));
+        const configPath = path.join(this.configDir, 'mediamtx.yml');
         fs.writeFileSync(configPath, buildMediaMtxConfig(this.config), { mode: 0o600 });
         console.log(`[WebRTC] Starting MediaMTX (${this.config.binary}), media port ${this.config.mediaPort} UDP/TCP, advertising ${this.config.hosts.join(', ') || 'interface addresses'}`);
 
-        // Run from the temp dir: anything MediaMTX writes next to itself stays out of the app directory.
-        const child = this.process = spawn(this.config.binary, [configPath], { cwd: os.tmpdir(), stdio: ['ignore', 'pipe', 'pipe'] });
+        // Run from that folder too: anything MediaMTX writes next to itself stays out of the app directory.
+        const child = this.process = spawn(this.config.binary, [configPath], { cwd: this.configDir, stdio: ['ignore', 'pipe', 'pipe'] });
         const log = (data) => {
             for (const line of data.toString().split('\n')) {
                 // waitForPath polls before ffmpeg has published; those 404s are expected.
@@ -217,6 +220,7 @@ class WebrtcRelay {
     shutdown() {
         for (const id of [...this.sessions.keys()]) this.endSession(id);
         this.process?.kill('SIGTERM');
+        if (this.configDir) fs.rmSync(this.configDir, { recursive: true, force: true });
     }
 }
 

@@ -26,8 +26,6 @@ class SourceManager {
         // Initialize content browser
         this.initContentBrowser();
 
-        // Start polling sync status
-        this.pollSyncStatus();
     }
 
     /**
@@ -1375,7 +1373,23 @@ class SourceManager {
     /**
      * Poll sync status periodically
      */
-    async pollSyncStatus() {
+    /** Sync status is for the Sources list: poll while Settings is open. */
+    startSyncPolling() {
+        this.syncPolling = true;
+        this.pollSyncStatus();
+    }
+
+    stopSyncPolling() {
+        this.syncPolling = false;
+    }
+
+    /**
+     * Poll sync status every 3 seconds while needed: Settings is open, or a source added there is
+     * still on its first sync (the channel list reads it again once that is done).
+     */
+    pollSyncStatus() {
+        if (this.syncPollActive) return;
+        this.syncPollActive = true;
         const poll = async () => {
             try {
                 const statuses = await API.sources.getStatus();
@@ -1383,8 +1397,8 @@ class SourceManager {
             } catch (err) {
                 console.warn('Error polling sync status:', err);
             }
-            // Poll every 3 seconds
-            this.syncPollTimeout = setTimeout(poll, 3000);
+            if (this.syncPolling || this.newSources.size > 0) this.syncPollTimeout = setTimeout(poll, 3000);
+            else this.syncPollActive = false;
         };
         poll();
     }

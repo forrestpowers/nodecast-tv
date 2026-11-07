@@ -67,6 +67,14 @@ function deinterlaceFilter(deinterlace) {
 }
 
 /**
+ * Re-encodes for the car stop at 30 fps: every frame is decoded and drawn there, so 59.94 or 50
+ * fps costs it twice the work for motion that is barely smoother on that screen. Halving keeps
+ * the cadence even (59.94 -> 29.97, 50 -> 25). Copied video keeps its rate. The filter only drops
+ * frames, so it also works on GPU frames.
+ */
+const FRAME_RATE_CAP = "fps=fps='if(gt(source_fps,30),source_fps/2,source_fps)'";
+
+/**
  * Encoder for H.264 re-encodes: { kind: 'software' } (libx264) or
  * { kind: 'vaapi', device, lowPower, hwDecode } (Intel/AMD GPU, see canvasEncoder.js).
  */
@@ -80,7 +88,7 @@ function h264Args(videoMode, maxHeight, deinterlace, { profile = 'main', keyfram
         '-tune', 'zerolatency',
         '-profile:v', profile,
         '-pix_fmt', 'yuv420p',
-        '-vf', `${deinterlaceFilter(deinterlace)},scale=-2:'min(ih,${maxHeight})'`,
+        '-vf', `${deinterlaceFilter(deinterlace)},${FRAME_RATE_CAP},scale=-2:'min(ih,${maxHeight})'`,
         '-crf', '23',
         '-maxrate', maxHeight > 720 ? '6M' : '3500k',
         '-bufsize', maxHeight > 720 ? '12M' : '7M',
@@ -100,8 +108,8 @@ function h264Args(videoMode, maxHeight, deinterlace, { profile = 'main', keyfram
 function vaapiArgs(maxHeight, deinterlace, { profile, keyframeSeconds, encoder }) {
     const kbps = VAAPI_BITRATES[maxHeight];
     const filters = encoder.hwDecode
-        ? `deinterlace_vaapi=${deinterlace === 'double' ? 'rate=field:' : ''}auto=1,scale_vaapi=w=-2:h='min(ih,${maxHeight})':format=nv12`
-        : `${deinterlaceFilter(deinterlace)},scale=-2:'min(ih,${maxHeight})',format=nv12,hwupload`;
+        ? `deinterlace_vaapi=${deinterlace === 'double' ? 'rate=field:' : ''}auto=1,scale_vaapi=w=-2:h='min(ih,${maxHeight})':format=nv12,${FRAME_RATE_CAP}`
+        : `${deinterlaceFilter(deinterlace)},${FRAME_RATE_CAP},scale=-2:'min(ih,${maxHeight})',format=nv12,hwupload`;
     return [
         '-vf', filters,
         '-c:v', 'h264_vaapi',

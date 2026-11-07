@@ -643,6 +643,7 @@ class VideoPlayer {
             }
             if (this.playbackGeneration !== playbackGeneration) return;
             this.currentChannel = channel;
+            this.stopped = false;
             let probeInfo = null;
             this.updateTranscodeStatus('hidden');
 

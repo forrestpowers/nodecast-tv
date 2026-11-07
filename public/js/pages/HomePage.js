@@ -151,7 +151,7 @@ class HomePage {
 
     createChannelTile(channel) {
         const logo = channel.tvgLogo || '/img/placeholder.png';
-        const logoUrl = logo.startsWith('http') ? `/api/proxy/image?url=${encodeURIComponent(logo)}` : logo;
+        const logoUrl = logo.startsWith('http') ? `/api/proxy/image?url=${encodeURIComponent(logo)}&w=128` : logo;
         const name = channel.name || 'Unknown';
 
         return `
@@ -164,11 +164,8 @@ class HomePage {
         `;
     }
 
-    async playChannel(channelId) {
-        // Live TV holds the player and the channel list, which starts loading now
-        this.app.navigateTo('live');
-        await this.app.pages.live.ready;
-        await this.app.channelList.selectChannel({ channelId });
+    playChannel(channelId) {
+        return this.app.playChannel(channelId);
     }
 }
 
