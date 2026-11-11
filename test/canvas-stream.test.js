@@ -6,9 +6,9 @@ const { TsDemuxer, readTimestamp, parseSps } = require('../public/js/canvas/ts-d
 
 const hasFfmpeg = spawnSync('ffmpeg', ['-version']).status === 0;
 
-test('canvas options default to a 720p H.264 re-encode from the start', () => {
+test('canvas options default to a 480p H.264 re-encode from the start', () => {
     assert.deepEqual(parseCanvasOptions({}),
-        { program: null, seek: 0, codec: 'h264', maxHeight: 720, deinterlace: 'auto', live: false, videoMode: 'encode', audioMode: 'encode' });
+        { program: null, seek: 0, codec: 'h264', maxHeight: 480, deinterlace: 'auto', live: false, videoMode: 'encode', audioMode: 'encode' });
     assert.deepEqual(parseCanvasOptions({ seek: '61.5', video: 'copy', audio: 'copy', deinterlace: 'double', height: '480', program: '7', live: '1' }),
         { program: '7', seek: 61.5, codec: 'h264', maxHeight: 480, deinterlace: 'double', live: true, videoMode: 'copy', audioMode: 'copy' });
     // MPEG-1 is always encoded, audio included.
@@ -48,7 +48,7 @@ test('copied AAC skips the audio filter, and known interlaced sources keep one f
     assert.ok(!copy.includes('-af') && !copy.includes('-vf'));
 
     const interlaced = buildCanvasArgs('https://example.test/live.ts', { userAgent: 'ua', deinterlace: 'double', live: true });
-    assert.equal(interlaced[interlaced.indexOf('-vf') + 1], "bwdif=mode=send_field,fps=fps='if(gt(source_fps,30),source_fps/2,source_fps)',scale=-2:'min(ih,720)'");
+    assert.equal(interlaced[interlaced.indexOf('-vf') + 1], "bwdif=mode=send_field,fps=fps='if(gt(source_fps,30),source_fps/2,source_fps)',scale=-2:'min(ih,480)'");
 });
 
 test('SPS parsing flags interlaced H.264 so copy mode can fall back before decoding', { skip: !hasFfmpeg && 'ffmpeg not installed' }, () => {

@@ -64,7 +64,7 @@ router.post('/session', startupLimit, async (req, res) => {
             userAgent,
             seekOffset: normalizedSeek,
             hwEncoder: settings.hwEncoder || 'software',
-            maxResolution: settings.maxResolution || '1080p',
+            maxResolution: settings.maxResolution || '480p',
             quality: settings.quality || 'medium',
             audioMixPreset: settings.audioMixPreset || 'auto', // Audio downmix preset
             // Upscaling options

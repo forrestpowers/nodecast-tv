@@ -108,8 +108,11 @@ test('the WebRTC engine is opt-in and falls back to a streaming engine', () => {
     });
     vm.runInContext(fs.readFileSync(path.join(__dirname, '../public/js/canvas/CanvasVideo.js'), 'utf8'), context);
     const playback = window.CanvasPlayback;
-    const progressiveH264 = { video: 'h264', height: 720, fieldOrder: 'progressive', audio: 'aac', audioChannels: 2 };
+    const progressiveH264 = { video: 'h264', height: 480, fieldOrder: 'progressive', audio: 'aac', audioChannels: 2 };
 
+    assert.equal(playback.getMaxHeight(), 480, 'streams default to 480p');
+    assert.equal(playback.videoModeFor({ ...progressiveH264, height: 720 }), 'encode', '720p H.264 is scaled down by default');
+    assert.equal(playback.videoModeFor(progressiveH264), 'copy');
     assert.equal(playback.getEngine(), 'webcodecs', 'auto never picks WebRTC');
     playback.setEnginePreference('webrtc');
     assert.equal(playback.getEnginePreference(), 'webrtc');

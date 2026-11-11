@@ -190,7 +190,7 @@ All transcoding and stream processing settings are found in **Settings → Trans
 | Setting | Options | Description |
 |---------|---------|-------------|
 | **Hardware Encoder** | Auto, NVENC, AMF, QSV, VAAPI, Software | GPU-accelerated encoding. Auto detects best available. |
-| **Max Resolution** | 4K, 1080p, 720p, 480p | Limit output resolution (lower = faster). |
+| **Max Resolution** | 4K, 1080p, 720p, 480p | Limit output resolution (lower = faster). Defaults to 480p. |
 | **Quality Preset** | High, Medium, Low | Encoding quality/speed tradeoff. |
 | **Audio Mix Preset** | Auto, ITU, Night Mode, Cinematic, Passthrough | 5.1→Stereo downmix mode (see below). |
 
@@ -237,7 +237,7 @@ Some browsers, like the Tesla in-car browser outside of Park, suspend `<video>` 
 | **JSMpeg** | Server streams MPEG-1 + MP2 over HTTP; decoded in WebAssembly | Any browser |
 | **WebRTC (Enhanced)** | Server relays H.264 + Opus over WebRTC (bundled MediaMTX); frames drawn with `MediaStreamTrackProcessor`, sound through an `<audio>` element | The server's WebRTC media port reachable from the browser |
 
-WebRTC is opt-in. If its session cannot start or the media port cannot be reached within a few seconds, playback switches to WebCodecs (or JSMpeg) automatically. WebRTC cannot carry B-frames, so most IPTV H.264 is re-encoded for it (720p by default, set by **Canvas Max Resolution**).
+WebRTC is opt-in. If its session cannot start or the media port cannot be reached within a few seconds, playback switches to WebCodecs (or JSMpeg) automatically. WebRTC cannot carry B-frames, so most IPTV H.264 is re-encoded for it (480p by default, set by **Canvas Max Resolution**).
 
 H.264 re-encodes for canvas playback follow **Settings → Transcoding → Hardware Encoder**: with VAAPI or QSV (or Auto on such a machine) they run entirely on the GPU, decoding, deinterlacing and scaling included (about a tenth of a CPU core for 1080p59.94 → 720p on an Intel iGPU, against more than a full core for libx264). A one-time test encode checks the GPU first, and a stream the GPU can't handle steps down to GPU encode with CPU decoding, then to libx264. `CANVAS_HW_DECODE=false` keeps decoding and scaling on the CPU.
 

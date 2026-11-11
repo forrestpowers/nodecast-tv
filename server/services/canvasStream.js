@@ -19,7 +19,7 @@ const { FFMPEG_PROTOCOL_WHITELIST } = require('./urlSecurity');
  */
 
 const MAX_HEIGHTS = new Set([360, 480, 720, 1080]);
-const DEFAULT_MAX_HEIGHT = 720;
+const DEFAULT_MAX_HEIGHT = 480;
 const MAX_SEEK_SECONDS = 7 * 24 * 60 * 60;
 const MPEG1_BITRATES = { 360: 900, 480: 1400, 720: 2500, 1080: 4500 }; // kbit/s; MPEG-1 needs more than H.264
 const VAAPI_BITRATES = { 360: 1000, 480: 1600, 720: 3000, 1080: 5000 };  // kbit/s; VBR targets for h264_vaapi

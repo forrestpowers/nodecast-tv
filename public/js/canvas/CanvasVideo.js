@@ -98,8 +98,8 @@ const CanvasPlayback = {
     setMode(mode) { if (['auto', 'on', 'off'].includes(mode)) this.write(this.MODE_KEY, mode); },
 
     getMaxHeight() {
-        const height = Number(this.read(this.HEIGHT_KEY, '720'));
-        return [360, 480, 720, 1080].includes(height) ? height : 720;
+        const height = Number(this.read(this.HEIGHT_KEY, '480'));
+        return [360, 480, 720, 1080].includes(height) ? height : 480;
     },
     setMaxHeight(height) { this.write(this.HEIGHT_KEY, String(height)); },
 

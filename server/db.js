@@ -87,7 +87,7 @@ function getDefaultSettings() {
     userAgentCustom: '',          // Custom UA string when preset is 'custom'
     // Transcoding settings
     hwEncoder: 'auto',            // auto | nvenc | amf | qsv | vaapi | software
-    maxResolution: '1080p',       // 4k | 1080p | 720p | 480p
+    maxResolution: '480p',        // 4k | 1080p | 720p | 480p
     quality: 'medium',            // high | medium | low
     audioMixPreset: 'auto',       // auto | itu | night | cinematic | passthrough
     // Probe cache settings  

@@ -124,7 +124,7 @@ class SettingsPage {
         }
 
         if (hwEncoderSelect) hwEncoderSelect.value = s.hwEncoder || 'auto';
-        if (maxResolutionSelect) maxResolutionSelect.value = s.maxResolution || '1080p';
+        if (maxResolutionSelect) maxResolutionSelect.value = s.maxResolution || '480p';
         if (qualitySelect) qualitySelect.value = s.quality || 'medium';
         if (forceProxyToggle) forceProxyToggle.checked = s.forceProxy === true;
         if (autoTranscodeToggle) autoTranscodeToggle.checked = s.autoTranscode !== false;

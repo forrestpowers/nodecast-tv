@@ -98,7 +98,7 @@ class TranscodeSession extends EventEmitter {
             userAgent: options.userAgent || 'Mozilla/5.0',
             seekOffset: options.seekOffset || 0,
             hwEncoder: options.hwEncoder || 'software',
-            maxResolution: options.maxResolution || '1080p',
+            maxResolution: options.maxResolution || '480p',
             quality: options.quality || 'medium',
             // Upscaling options
             upscaleEnabled: options.upscaleEnabled || false,
@@ -413,7 +413,7 @@ class TranscodeSession extends EventEmitter {
         }
 
         // Otherwise, use max resolution as the cap
-        return resolutionMap[this.options.maxResolution] || 1080;
+        return resolutionMap[this.options.maxResolution] || 480;
     }
 
     /**
