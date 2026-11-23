@@ -15,9 +15,10 @@ const diagnostics = require('../services/diagnostics');
  *   POST /api/diagnostics/client  a player reports the path it took, for any login
  *
  * Browsers choose the playback path, so the server only learns it when the player says so.
+ * A 'decoders' report says which codecs the browser can decode for the canvas (once per visit).
  */
 
-const CLIENT_KINDS = ['plan', 'fallback', 'error'];
+const CLIENT_KINDS = ['plan', 'fallback', 'error', 'decoders'];
 
 router.post('/client', requestLimit(60), (req, res) => {
     const { kind, path, engine, video, title, tesla, reason } = req.body || {};

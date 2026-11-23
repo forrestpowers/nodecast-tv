@@ -125,12 +125,18 @@ test('players report their path to diagnostics, which only admins can read', asy
     assert.equal((await request('/api/diagnostics/client', { headers: viewer, body: { kind: 'nonsense' } })).status, 400);
     assert.equal((await request('/api/diagnostics/client', { headers: viewer, body: { kind: 'plan', path: 'Canvas (WebRTC)', title: 'News', tesla: true, reason: 'http://secret.test/x failed' } })).status, 204);
 
+    assert.equal((await request('/api/diagnostics/client', { headers: viewer, body: { kind: 'decoders', path: 'H.264 hw+sw · HEVC hw · HEVC 10-bit no', tesla: true, reason: 'Chrome 120 · 1254x784 screen' } })).status, 204);
+
     const { body } = await request('/api/diagnostics', { headers });
     const [plan] = body.events.filter((event) => event.type === 'client-plan');
     assert.equal(plan.user, 'Viewer');
     assert.equal(plan.path, 'Canvas (WebRTC)');
     assert.equal(plan.tesla, true);
     assert.ok(!plan.reason.includes('secret.test'));
+    // What the car's browser can decode, so HEVC pass-through can be decided per car
+    const [decoders] = body.events.filter((event) => event.type === 'client-decoders');
+    assert.equal(decoders.path, 'H.264 hw+sw · HEVC hw · HEVC 10-bit no');
+    assert.equal(decoders.reason, 'Chrome 120 · 1254x784 screen');
 });
 
 test('JSON and scripts are compressed, video and live event streams never are', async (t) => {

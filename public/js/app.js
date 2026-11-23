@@ -33,6 +33,7 @@ class App {
         // Check authentication first
         if (!await this.checkAuth()) return;
         this.playerButtons = new PlayerButtons(this);
+        window.PlaybackReport?.decoders(); // what this browser can decode, for the Diagnostics tab
 
         // Mobile menu toggle
         const mobileMenuToggle = document.getElementById('mobile-menu-toggle');

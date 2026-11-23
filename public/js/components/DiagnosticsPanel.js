@@ -56,7 +56,8 @@ class DiagnosticsPanel {
         const labels = {
             'playback-start': 'Stream started', 'playback-end': 'Stream ended', 'provider-retry': 'Provider refused, retrying',
             'encoder-fallback': 'Encoder fell back', 'sync-finished': 'Source refreshed', 'sync-failed': 'Source refresh failed',
-            'client-plan': 'Player path', 'client-fallback': 'Player fell back', 'client-error': 'Player error'
+            'client-plan': 'Player path', 'client-fallback': 'Player fell back', 'client-error': 'Player error',
+            'client-decoders': 'Browser decoders'
         };
         return labels[event.type] || event.type;
     }
