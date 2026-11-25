@@ -1,12 +1,5 @@
 node_modules/
-data/*.db
+data/
 .env
 *.log
-data/
-user_data/
-coverage/
 .DS_Store
-dist/
-release/
-.vscode
-transcode-cache/

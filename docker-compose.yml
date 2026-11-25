@@ -1,18 +1,9 @@
 services:
-  nodecast-tv:
-    image: ghcr.io/technomancer702/nodecast-tv:latest
-    build: https://github.com/technomancer702/nodecast-tv.git#main
-    container_name: nodecast-tv
+  tesplayer:
+    build: .
+    container_name: tesplayer
     ports:
       - "3000:3000"
-      # Canvas playback's WebRTC engine (optional): publish the media port, forward it on your
-      # router for use away from home, and set WEBRTC_HOSTS below.
-      # - "8189:8189/udp"
-      # - "8189:8189/tcp"
-    volumes:
-      - ./data:/app/data
-    restart: unless-stopped
     environment:
-      - NODE_ENV=production
-      - PORT=3000 # Internal container port
-      # - WEBRTC_HOSTS=203.0.113.10,192.168.1.20 # public IP / DNS-only hostname, and LAN IP
+      - PORT=3000
+    restart: unless-stopped
