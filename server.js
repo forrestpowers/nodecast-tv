@@ -6,7 +6,10 @@ const path = require('node:path');
 const PORT = Number(process.env.PORT) || 3000;
 const PUBLIC = path.join(__dirname, 'public');
 const FILES = {
-    '/video.mp4': { file: 'video.mp4', type: 'video/mp4' },
+    '/player.js': { file: 'player.js', type: 'text/javascript; charset=utf-8' },
+    '/video.h264': { file: 'video.h264', type: 'application/octet-stream' }, // the canvas player's video track
+    '/audio.m4a': { file: 'audio.m4a', type: 'audio/mp4' },                  // and its audio track
+    '/video.mp4': { file: 'video.mp4', type: 'video/mp4' },                  // <video> fallback
     '/favicon.svg': { file: 'favicon.svg', type: 'image/svg+xml' }
 };
 

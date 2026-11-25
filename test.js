@@ -13,7 +13,15 @@ test('every path plays the video, the file supports ranges, the health check ans
         const response = await fetch(base + path);
         assert.equal(response.status, 200, path);
         assert.match(response.headers.get('content-type'), /text\/html/, path);
-        assert.match(await response.text(), /<video[^>]* src="\/video\.mp4"[^>]* autoplay/, path);
+        assert.match(await response.text(), /<canvas id="canvas">[\s\S]*<script src="\/player\.js">/, path);
+    }
+
+    // The canvas player's tracks and script.
+    for (const [path, type] of [['/player.js', 'text/javascript'], ['/video.h264', 'application/octet-stream'], ['/audio.m4a', 'audio/mp4']]) {
+        const response = await fetch(base + path);
+        assert.equal(response.status, 200, path);
+        assert.match(response.headers.get('content-type'), new RegExp(type), path);
+        assert.ok((await response.arrayBuffer()).byteLength > 100, path);
     }
 
     const whole = await fetch(`${base}/video.mp4`);

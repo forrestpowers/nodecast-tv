@@ -9,26 +9,16 @@
 <style>
     html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
     body { display: flex; align-items: center; justify-content: center; font-family: -apple-system, system-ui, sans-serif; }
-    video { max-width: 100vw; max-height: 100vh; display: block; }
-    #sound { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
-        background: rgba(0, 0, 0, 0.35); color: #fff; font-size: 2rem; cursor: pointer; user-select: none; }
-    #sound span { padding: 0.6em 1.2em; border: 2px solid #fff; border-radius: 999px; }
-    #sound.hidden { display: none; }
+    canvas, video { display: block; max-width: 100vw; max-height: 100vh; }
+    [hidden] { display: none !important; }
+    #hint { position: fixed; left: 0; right: 0; bottom: 4vh; text-align: center; color: rgba(255, 255, 255, 0.7);
+        font-size: 1.1rem; letter-spacing: 0.02em; pointer-events: none; }
 </style>
 </head>
 <body>
-<video id="video" src="/video.mp4" autoplay muted loop playsinline></video>
-<div id="sound"><span>▶ Tap for sound</span></div>
-<script>
-    const video = document.getElementById('video');
-    const sound = document.getElementById('sound');
-    video.play().catch(() => {});
-    sound.addEventListener('click', () => {
-        video.muted = false;
-        video.currentTime = 0;
-        video.play().catch(() => {});
-        sound.classList.add('hidden');
-    });
-</script>
+<canvas id="canvas"></canvas>
+<video id="video" src="/video.mp4" autoplay loop playsinline hidden></video>
+<div id="hint" hidden>tap anywhere for sound</div>
+<script src="/player.js"></script>
 </body>
 </html>
